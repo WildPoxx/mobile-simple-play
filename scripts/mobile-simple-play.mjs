@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.5
+ * Mobile Simple Play — v0.1.6
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -27,7 +27,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.5";
+const VERSION = "0.1.6";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -765,6 +765,48 @@ function clearChatPip() {
 }
 
 /* -------------------------------------------------- */
+/*  Foreign floating UI                                */
+/* -------------------------------------------------- */
+
+/** Elements Foundry itself puts at the top level. Anything else that turns up
+ *  as a direct child of <body> came from a module, and may well be floating
+ *  over our layout. */
+const KNOWN_BODY_CHILDREN = new Set([
+  "interface", "board", "hud", "notifications", "tooltip", "pause", "loading",
+  "context-menu", "fps", "camera-views", "chat-notifications", "navigation",
+  "msp-rail", "msp-bar", "msp-overlay", "msp-write-close"
+]);
+
+/**
+ * Name the foreign furniture instead of hunting it in screenshots.
+ *
+ * Mobile mode hides Foundry's own chrome, but a module that appends a floating
+ * button straight to <body> is out of reach of every layout rule we write. The
+ * first one we met was Ginzzzu's "Show My Character", sitting on top of the
+ * bottom bar; Mario found it by eye. With eighty-odd modules active there will
+ * be others, so this writes them all into the diagnostic log at mount.
+ */
+function reportForeignChrome() {
+  safe("survey body children", () => {
+    const strangers = [];
+    for (const node of document.body.children) {
+      const id = node.id ?? "";
+      if (KNOWN_BODY_CHILDREN.has(id)) continue;
+      const tag = node.tagName.toLowerCase();
+      if (["script", "template", "style", "link"].includes(tag)) continue;
+      // Application windows and dialogs are legitimate and transient.
+      if (node.classList.contains("application") || node.classList.contains("dialog")) continue;
+      strangers.push(`${tag}${id ? "#" + id : ""}${node.className ? "." + String(node.className).trim().split(/\s+/).join(".") : ""}`);
+    }
+    if (strangers.length) {
+      pushLog("INFO ", [`foreign body-level elements (${strangers.length}): ${strangers.join(" | ")}`]);
+    } else {
+      pushLog("INFO ", ["no foreign body-level elements"]);
+    }
+  });
+}
+
+/* -------------------------------------------------- */
 /*  Turning on and off                                 */
 /* -------------------------------------------------- */
 
@@ -786,6 +828,7 @@ function mount() {
 
   document.body.append(ui_.rail, ui_.bar, ui_.writeClose);
   setTab("chat");
+  reportForeignChrome();
   watchChatLog();
   scrollChatToBottom();
 

@@ -1,5 +1,5 @@
 /*
- * Mobile Simple Play — v0.1.5
+ * Mobile Simple Play — v0.1.6
  *
  * EVERYTHING in this file sits under `body.msp-on`. Without that class — which
  * is only added when the player turns mobile mode on in THAT browser — this
@@ -34,6 +34,29 @@ body.msp-on #sidebar > nav.tabs {
    fights the bottom bar. Its CONTENTS are offered instead, in our overlay
    (see openHotbar() in the script). */
 body.msp-on #ui-bottom { display: none !important; }
+
+/* -------------------------------------------------- */
+/*  Foreign floating UI                                */
+/* -------------------------------------------------- */
+
+/* Hiding Foundry's own furniture is not enough: other modules append floating
+   elements straight to <body>, where none of our layout rules reach them.
+   Ginzzzu's Portraits is the first we met — its "Show My Character" button
+   sat on top of the bottom bar. Its portrait layers are full-screen overlays
+   that would cover the chat, and a bust rail over a 360 px map is not usable
+   anyway, so the whole set goes.
+
+   This list will grow. mount() now writes every body-level element it does not
+   recognise into the diagnostic log, so the next one is NAMED instead of being
+   spotted in a screenshot. */
+body.msp-on #ginzzzu-portrait-layer,
+body.msp-on #ginzzzu-portrait-rail,
+body.msp-on #ginzzzu-portrait-names,
+body.msp-on #ginzzzu-portrait-ui-toggle-btn,
+body.msp-on #ginzzzu-player-portrait-toggle-btn,
+body.msp-on .ginzzzu-portrait-btn {
+  display: none !important;
+}
 
 /* Foundry's notifications are full-width toasts. Keep them inside the middle,
    and never let them take the whole screen. */
