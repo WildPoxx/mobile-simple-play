@@ -1,12 +1,12 @@
 /*
- * Mobile Simple Play — v0.1.0
+ * Mobile Simple Play — v0.1.1
  *
- * TUDO neste arquivo esta' sob `body.msp-on`. Sem essa classe — que so' e'
- * acrescentada quando o jogador liga o modo celular NAQUELE navegador — este
- * arquivo nao muda um pixel da interface do Foundry.
+ * EVERYTHING in this file sits under `body.msp-on`. Without that class — which
+ * is only added when the player turns mobile mode on in THAT browser — this
+ * file does not change a single pixel of the Foundry interface.
  *
- * Medidas conforme a ESPEC-TELA v1.0: tela de 360 x 800 px de CSS,
- * trilho de 48, barra de 64, alvos de toque de 48, corpo de texto 16.
+ * Measurements follow ESPEC-TELA v1.0: a 360 x 800 px CSS viewport,
+ * a 48 px rail, a 64 px bar, 48 px touch targets, 16 px body text.
  */
 
 body.msp-on {
@@ -20,7 +20,7 @@ body.msp-on {
 }
 
 /* -------------------------------------------------- */
-/*  1. Esconder a interface de computador              */
+/*  1. Hide the desktop interface                      */
 /* -------------------------------------------------- */
 
 body.msp-on #ui-left,
@@ -30,7 +30,7 @@ body.msp-on #sidebar > nav.tabs {
   display: none !important;
 }
 
-/* A hotbar existe, mas so' aparece quando o jogador pede. */
+/* The hotbar exists, but only shows up when the player asks for it. */
 body.msp-on #ui-bottom { display: none !important; }
 body.msp-on.msp-hotbar #ui-bottom {
   display: flex !important;
@@ -41,7 +41,7 @@ body.msp-on.msp-hotbar #ui-bottom {
 }
 
 /* -------------------------------------------------- */
-/*  2. O miolo                                         */
+/*  2. The middle                                      */
 /* -------------------------------------------------- */
 
 body.msp-on #interface { padding: 0 !important; }
@@ -65,15 +65,15 @@ body.msp-on #sidebar {
 
 body.msp-on #sidebar-content { height: 100%; }
 
-/* O chat ocupa o miolo inteiro. */
+/* The chat fills the whole middle. */
 body.msp-on #chat.chat-sidebar { height: 100%; }
 body.msp-on #chat .chat-scroll { flex: 1 1 auto; }
 
-/* Cartoes com margem pequena — o miolo tem 312 px, nao 360. */
+/* Small card margins — the middle is 312 px wide, not 360. */
 body.msp-on #chat .chat-log { padding: 0 8px; }
 body.msp-on #chat .chat-message { font-size: 16px; }
 
-/* O campo de mensagem so' aparece quando pedido. */
+/* The message field only appears on request. */
 body.msp-on #chat .chat-form { display: none !important; }
 body.msp-on.msp-writing #chat .chat-form {
   display: block !important;
@@ -88,7 +88,7 @@ body.msp-on.msp-writing #chat .chat-form {
 }
 
 /* -------------------------------------------------- */
-/*  3. Abas: qual conteudo aparece                     */
+/*  3. Tabs: which content is shown                    */
 /* -------------------------------------------------- */
 
 body.msp-on[data-msp-tab="chat"] #board { visibility: hidden; }
@@ -97,7 +97,7 @@ body.msp-on[data-msp-tab="map"] #board { visibility: visible; }
 body.msp-on[data-msp-tab="map"] #hud { z-index: 25; }
 
 /* -------------------------------------------------- */
-/*  4. Trilho de acoes                                 */
+/*  4. Action rail                                     */
 /* -------------------------------------------------- */
 
 body.msp-on #msp-rail {
@@ -163,7 +163,7 @@ body.msp-on .msp-div {
   border-top: 1px solid var(--msp-line);
 }
 
-/* Selos de estado — so' leitura. */
+/* Status badges — read-only. */
 body.msp-on .msp-status { display: flex; flex-direction: column; align-items: center; }
 body.msp-on .msp-badge {
   width: 40px;
@@ -179,7 +179,7 @@ body.msp-on .msp-wounds  { box-shadow: inset 3px 0 0 #a33; }
 body.msp-on .msp-fatigue { box-shadow: inset 3px 0 0 #37a; }
 body.msp-on .msp-bennies { box-shadow: inset 3px 0 0 var(--msp-accent); }
 
-/* Toque longo mostra o nome. */
+/* Long press reveals the name. */
 body.msp-on .msp-tip {
   position: absolute;
   left: calc(100% + 6px);
@@ -197,7 +197,7 @@ body.msp-on .msp-tip {
 }
 
 /* -------------------------------------------------- */
-/*  5. Barra unica                                     */
+/*  5. The single bar                                  */
 /* -------------------------------------------------- */
 
 body.msp-on #msp-bar {
@@ -224,7 +224,7 @@ body.msp-on #msp-bar button {
   cursor: pointer;
 }
 
-/* SO' AS ABAS acendem. E' o que separa navegar de agir. */
+/* ONLY TABS light up. That is what separates navigating from acting. */
 body.msp-on .msp-tab.is-active {
   color: var(--msp-accent);
   box-shadow: inset 0 -3px 0 var(--msp-accent);
@@ -241,7 +241,7 @@ body.msp-on .msp-pip {
 body.msp-on #msp-pc {
   width: 72px !important;
   height: 72px !important;
-  margin-top: -8px;            /* elevado 8 px sobre a barra */
+  margin-top: -8px;            /* raised 8 px above the bar */
   border-radius: 50% !important;
   border: 2px solid var(--msp-accent) !important;
   background: var(--msp-back) !important;
@@ -252,7 +252,7 @@ body.msp-on #msp-pc {
 body.msp-on #msp-pc img { width: 100%; height: 100%; object-fit: cover; }
 
 /* -------------------------------------------------- */
-/*  6. Sobreposicoes (alvo, mais)                      */
+/*  6. Overlays (target, more)                         */
 /* -------------------------------------------------- */
 
 body.msp-on #msp-overlay {

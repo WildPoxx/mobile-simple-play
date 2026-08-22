@@ -1,118 +1,129 @@
 # Mobile Simple Play
 
-Interface de celular para o **Foundry VTT 14**, centrada no **chat**.
+A phone interface for **Foundry VTT 14**, built around the **chat**.
 
-Feita para um caso concreto: um jogador que não tem computador e entra na mesa pelo
-navegador do telefone. Todo módulo mobile de VTT começa pelo mapa; este começa pelo chat —
-porque no Foundry o chat não é conversa, é o livro-razão da mesa. Quem tem o chat tem o
-jogo.
+It exists for a concrete case: a player who owns no computer and joins the table
+through the browser on their phone. Every mobile VTT module starts from the map; this
+one starts from the chat — because in Foundry the chat is not conversation, it is the
+ledger of the table. Whoever has the chat has the game.
 
-**Estado: v0.1.0 — primeira versão de teste.** Ainda não foi usada em mesa.
+**Status: v0.1.1 — first test version.** Not yet used at a real table.
 
 ---
 
-## Como instalar
+## Installing
 
-No Foundry, como Mestre: **Add-on Modules → Install Module**, e cole em *Manifest URL*:
+In Foundry, as GM: **Add-on Modules → Install Module**, and paste into *Manifest URL*:
 
 ```
 https://github.com/WildPoxx/mobile-simple-play/releases/latest/download/module.json
 ```
 
-Depois ative o módulo no mundo (**Game Settings → Manage Modules**).
+Then enable the module in the world (**Game Settings → Manage Modules**).
 
 ---
 
-## O módulo nasce desligado
+## The module is born switched off
 
-Isto é a característica mais importante da v0.1, e vale entender antes de instalar:
+This is the most important property of v0.1, and it is worth understanding before you
+install:
 
-> **Instalar e ativar não muda nada para ninguém.** Enquanto o modo celular não for ligado,
-> o módulo não acrescenta um elemento de tela, não troca uma classe do Foundry e não
-> registra um ouvinte de evento. Ele só declara três configurações e fica quieto.
+> **Installing and enabling changes nothing for anyone.** Until mobile mode is turned
+> on, the module adds no screen element, replaces no Foundry class and registers no
+> event listener. It declares three settings and stays quiet.
 
-Quem liga é o jogador, **no aparelho dele**:
+The player is the one who turns it on, **on their own device**:
 
-- ao entrar por um aparelho de toque, o módulo **pergunta uma vez** se deve ligar;
-- a resposta fica guardada **naquele navegador** (configuração de escopo `client`, no
-  `localStorage`);
-- ligar no celular **não afeta** o Mestre, os outros jogadores, nem o mesmo jogador em
-  outro aparelho.
+- when entering from a touch device, the module **asks once** whether it should turn on;
+- the answer is stored **in that browser** (a `client`-scope setting, in `localStorage`);
+- turning it on from a phone **does not affect** the GM, the other players, or the same
+  player on another device.
 
-### Se algo der errado
+### If something goes wrong
 
-O modo celular pode ser desligado de três formas, da mais simples à mais drástica:
+Mobile mode can be turned off in three ways, from the simplest to the most drastic:
 
-1. dentro do modo celular, botão **Mais → Desligar o modo celular**;
-2. **Game Settings → Configure Settings → Mobile Simple Play → Modo celular**, desmarcar;
-3. e, no pior caso, desativar o módulo em **Manage Modules** — o mundo volta ao normal,
-   sem deixar rastro.
+1. inside mobile mode, the **More → Turn off mobile mode** button;
+2. **Game Settings → Configure Settings → Mobile Simple Play → Mobile mode**, unchecked;
+3. and, worst case, disable the module in **Manage Modules** — the world returns to
+   normal, leaving nothing behind.
 
-O módulo **não escreve nada no mundo**: não cria documento, não põe flag em ator, item,
-cena ou mensagem. Desinstalar não deixa sujeira.
-
----
-
-## O que a v0.1 faz
-
-- **Chat em tela cheia**, com os cartões de rolagem do SWADE como eles já são — com os
-  botões de Benny, reroll e dano funcionando, porque quem os desenha continua sendo o
-  sistema.
-- **Trilho de ações** à esquerda, com:
-  - as **armas e itens marcados como favoritos na ficha** (o *Quick Access* do SWADE);
-  - as **perícias** mais usadas (configurável; em branco, usa as cinco centrais do SWADE
-    mais Lutar e Atirar);
-  - **selos de estado** — ferimentos, fadiga, Bennies — só leitura;
-  - o botão de **alvo**, no pé.
-- **Escolha de alvo por lista**: mostra os tokens da cena, hostis primeiro, e marca ou
-  desmarca ao toque. Funciona **mesmo sem o mapa carregado**.
-- **Barra inferior** com as abas **Chat** e **Mapa**, o **retrato do personagem** ao centro
-  (abre a ficha) e o botão **Mais** (escrever no chat, hotbar, desligar).
-- **Aviso de mensagem nova** na aba Chat quando você está no mapa.
-- **Freio de bateria**: fora da aba Mapa, o motor gráfico para de desenhar.
-
-## O que a v0.1 ainda NÃO faz
-
-- aba de **Quests** (leitura dos Journals de missão);
-- **gestos de toque no mapa** — dá para ver a cena, mas arrastar token e ampliar com dois
-  dedos ainda não foi trabalhado;
-- **reflow da ficha** do SWADE, que ainda quebra em telas estreitas;
-- gastar Benny pelo trilho;
-- tela de configuração das perícias (por ora, é um campo de texto nas configurações).
+The module **writes nothing to the world**: it creates no document and sets no flag on
+any actor, item, scene or message. Uninstalling leaves no residue.
 
 ---
 
-## Requisitos e alvo
+## What v0.1 does
 
-- **Foundry VTT 14** (verificado na 14.365).
-- Pensado para **Chrome no Android**, em telas a partir de 360 px de largura lógica.
-  iPhone não é alvo desta fase — deve funcionar em parte, mas não foi testado.
-- Sistema: desenhado sobre o **SWADE 6.0.4**. O trilho lê `system.favorite` e chama
-  `rollSkill`, que são do SWADE; em outros sistemas o chat funciona e o trilho vem vazio.
+- **Full-screen chat**, with the SWADE roll cards exactly as they already are — Benny,
+  reroll and damage buttons all working, because the system is still the one drawing them.
+- **Action rail** on the left, holding:
+  - the **weapons and items marked as favourites on the sheet** (SWADE's *Quick Access*);
+  - the most-used **skills** (configurable; when blank, the five SWADE core skills plus
+    Fighting and Shooting);
+  - **status badges** — wounds, fatigue, Bennies — read-only;
+  - the **target** button, at the foot.
+- **Target picking from a list**: shows the tokens in the scene, hostiles first, toggled
+  by tap. Works **even with the map not loaded**.
+- **Bottom bar** with the **Chat** and **Map** tabs, the **character portrait** in the
+  centre (opens the sheet) and the **More** button (write in chat, hotbar, turn off).
+- **New-message pip** on the Chat tab while you are on the map.
+- **Battery brake**: off the Map tab, the graphics engine stops drawing.
 
-### Um módulo mobile por vez
+## What v0.1 does not do yet
 
-Não use junto com outros módulos que reorganizam a interface no celular (por exemplo o
-Swipe VTT). Dois módulos disputando o mesmo layout dão um resultado que não se diagnostica.
+- the **Quests** tab (reading mission Journals);
+- **touch gestures on the map** — the scene can be seen, but dragging a token and
+  pinch-zooming have not been worked on;
+- **reflow of the SWADE sheet**, which still breaks on narrow screens;
+- spending a Benny from the rail;
+- a proper configuration screen for the skills (for now it is a text field in settings).
 
 ---
 
-## Princípios de projeto
+## Requirements and target
 
-1. **O Foundry é a autoridade.** O módulo não inventa número, não guarda estado paralelo,
-   não decide regra. Toda rolagem nasce do sistema.
-2. **Permissão não se contorna.** O que o jogador não pode ver no computador, não vê aqui.
-3. **Nada de aplicativo.** Navegador, endereço, pronto.
-4. **O módulo é removível.** Desinstalar não pode quebrar o mundo nem deixar sujeira.
-5. **Sem conta, sem proxy, sem serviço de terceiro.**
-6. **Uma mão só.** Alvo de toque de 48 px, nada de menu aninhado, nada de arrasto preciso.
+- **Foundry VTT 14** (verified on 14.365).
+- Designed for **Chrome on Android**, on screens from 360 px of logical width upwards.
+  iPhone is not a target of this phase — parts of it should work, but nothing was tested.
+- System: designed against **SWADE 6.0.4**. The rail reads `system.favorite` and calls
+  `rollSkill`, both of which are SWADE's; on other systems the chat works and the rail
+  comes up empty.
+
+### One mobile module at a time
+
+Do not run this alongside other modules that reorganise the interface on phones (Swipe
+VTT, for example). Two modules fighting over the same layout produce a result that
+cannot be diagnosed.
 
 ---
 
-## Licença
+## Language
 
-MIT — ver [LICENSE](LICENSE).
+The module ships **in English**. A Brazilian Portuguese translation is included and is
+selected automatically by the client's language setting; English is the source of truth,
+and every string carries an English fallback in code, so a missing translation key can
+never surface as a raw identifier on screen.
 
-O módulo não contém código de terceiros. O desenho do trilho de ações foi informado pela
-leitura de dois módulos de licença MIT — `token-action-hud-swade` e
-`enhancedcombathud-swade` —, mas nenhuma linha foi copiada deles.
+---
+
+## Design principles
+
+1. **Foundry is the authority.** The module invents no number, keeps no parallel state
+   and decides no rule. Every roll is born in the system.
+2. **Permissions are not worked around.** What the player cannot see on a computer, they
+   do not see here.
+3. **No app.** A browser, an address, done.
+4. **The module is removable.** Uninstalling must not break the world or leave residue.
+5. **No account, no proxy, no third-party service.**
+6. **One-handed.** 48 px touch targets, no nested menus, no precise dragging.
+
+---
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
+
+The module contains no third-party code. The design of the action rail was informed by
+reading two MIT-licensed modules — `token-action-hud-swade` and `enhancedcombathud-swade`
+— but not a single line was copied from either.

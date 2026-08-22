@@ -2,5 +2,31 @@
   "MSP.Settings.Enabled.Name": "Mobile mode (this browser only)",
   "MSP.Settings.Enabled.Hint": "Turns on the phone interface. The choice applies only to this browser on this device — it changes nothing for the GM or other players. You can also turn it off from the More button inside mobile mode.",
   "MSP.Settings.Skills.Name": "Skills on the rail",
-  "MSP.Settings.Skills.Hint": "Comma-separated names of the skills shown on the side rail. Leave blank to use the common ones automatically (the five SWADE core skills plus Fighting and Shooting). Weapons and items do not need to be listed here: just mark them as favourites on the sheet."
+  "MSP.Settings.Skills.Hint": "Comma-separated names of the skills shown on the side rail. Leave blank to use the common ones automatically (the five SWADE core skills plus Fighting and Shooting). Weapons and items do not need to be listed here: just mark them as favourites on the sheet.",
+
+  "MSP.Rail.Label": "Actions",
+  "MSP.Bar.Label": "Navigation",
+  "MSP.Bar.Character": "Character",
+
+  "MSP.Tab.Chat": "Chat",
+  "MSP.Tab.Map": "Map",
+
+  "MSP.Status.Wounds": "Wounds",
+  "MSP.Status.Fatigue": "Fatigue",
+  "MSP.Status.Bennies": "Bennies",
+
+  "MSP.Target.Label": "Target",
+  "MSP.Target.Title": "Target",
+  "MSP.Target.Empty": "No tokens in this scene.",
+
+  "MSP.More.Label": "More",
+  "MSP.More.Write": "Write in chat",
+  "MSP.More.Hotbar": "Hotbar",
+  "MSP.More.Disable": "Turn off mobile mode",
+
+  "MSP.Common.Clear": "Clear",
+  "MSP.Common.Close": "Close",
+
+  "MSP.Prompt.Detected": "This device looks like a phone or a tablet.",
+  "MSP.Prompt.Question": "Turn on <strong>mobile mode</strong> in this browser? It applies here only — it changes nothing for the other players, and you can turn it off at any time from the <em>More</em> button."
 }
