@@ -1,5 +1,5 @@
 /*
- * Mobile Simple Play — v0.1.4
+ * Mobile Simple Play — v0.1.5
  *
  * EVERYTHING in this file sits under `body.msp-on`. Without that class — which
  * is only added when the player turns mobile mode on in THAT browser — this
@@ -69,12 +69,45 @@ body.msp-on #ui-right {
   z-index: 20;
 }
 
+/* ===================================================================
+   THE ONE THAT MATTERED.
+
+   Foundry does not size the sidebar with `width`. It derives THREE
+   fixed widths from a single custom property:
+
+       #sidebar          --sidebar-width: 300px
+                         --sidebar-scroll-gutter: 12px
+                         --sidebar-full-width: calc(300px + 12px)
+       #sidebar-content  width: var(--sidebar-full-width)     ->  312px
+       #sidebar-content .tab   width: var(--sidebar-width)    ->  300px
+       #chat .chat-log   max-width: var(--sidebar-width)      ->  300px
+
+   Versions 0.1.0 to 0.1.4 fought that with `width: 100% !important` on
+   the two outer elements and never touched the inner two — so the chat
+   stayed 300 px wide no matter what. On a 360 px phone, 48 (rail) + 312
+   came to exactly 360, and the bug hid behind a coincidence. On any
+   wider screen the chat is a narrow column with dead space beside it.
+
+   The fix is to override the VARIABLE, not the elements. Every rule
+   Foundry wrote in terms of it then follows on its own.
+   =================================================================== */
 body.msp-on #sidebar {
+  --sidebar-scroll-gutter: 0px;
+  --sidebar-width: 100%;
   width: 100% !important;
   max-width: none !important;
   height: 100% !important;
   max-height: 100% !important;
   overflow: hidden;
+}
+
+/* Foundry makes the chat column click-through so the map underneath stays
+   usable on a desktop. In mobile mode the chat IS the screen. */
+body.msp-on #sidebar-content,
+body.msp-on #sidebar-content.active-chat {
+  pointer-events: auto !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 body.msp-on #sidebar-content { height: 100%; }
@@ -89,6 +122,9 @@ body.msp-on #chat .chat-scroll { flex: 1 1 auto; }
    underneath the navigation. */
 body.msp-on #chat .chat-log {
   padding: 0 8px 16px;
+  max-width: none !important;   /* belt and braces: the variable above already
+                                   frees it, this survives a theme that hardcodes */
+  width: auto !important;
 }
 body.msp-on #chat .chat-message { font-size: 16px; }
 

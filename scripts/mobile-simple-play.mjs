@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.4
+ * Mobile Simple Play — v0.1.5
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -27,7 +27,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.4";
+const VERSION = "0.1.5";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -140,8 +140,19 @@ function pushLog(kind, args) {
   }
 }
 
+/**
+ * Wrapping console.warn/error costs something visible: DevTools then reports
+ * EVERY warning in the whole application as coming from this file, because we
+ * are the last frame before the console call. That is a real nuisance while
+ * hunting somebody else's bug, so capture is now OFF by default and turned on
+ * only when a diagnostic log is actually wanted.
+ */
 function startCapture() {
   if (ui_.capture) return;
+  if (setting("capture") !== true) {
+    pushLog("INFO ", ["console capture is OFF (turn it on in settings before reproducing a bug)"]);
+    return;
+  }
   safe("start log capture", () => {
     const original = { warn: console.warn, error: console.error };
     console.warn = (...a) => { pushLog("WARN ", a); original.warn.apply(console, a); };
@@ -904,6 +915,15 @@ Hooks.once("init", () => {
     });
 
     // "Never offer mobile mode again in this browser."
+    game.settings.register(MOD, "capture", {
+      name: "MSP.Settings.Capture.Name",
+      hint: "MSP.Settings.Capture.Hint",
+      scope: "client",
+      config: true,
+      type: Boolean,
+      default: false
+    });
+
     game.settings.register(MOD, "dismissed", {
       scope: "client",
       config: false,

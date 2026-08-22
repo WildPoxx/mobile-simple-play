@@ -184,7 +184,8 @@ assert.ok(game.settings._defs.has("mobile-simple-play.enabled"));
 assert.strictEqual(game.settings._defs.get("mobile-simple-play.enabled").scope, "client");
 assert.strictEqual(game.settings._defs.get("mobile-simple-play.enabled").default, false);
 assert.ok(game.settings._defs.has("mobile-simple-play.dismissed"));
-ok(2, "init registers three settings; `enabled` is client scope and starts FALSE");
+assert.ok(game.settings._defs.has("mobile-simple-play.capture"));
+ok(2, "init registers four settings; `enabled` is client scope and starts FALSE");
 
 assert.strictEqual(document.body.classList.contains("msp-on"), false);
 assert.strictEqual(document.getElementById("msp-rail"), null);
@@ -321,12 +322,23 @@ await new Promise(r => setTimeout(r, 10));
 assert.ok(calls.includes("macro:Soak"), "tapping a macro runs it");
 ok(18, "the hotbar is our own list, sorted by slot, skipping dangling ids");
 
-// 19. The field log captures errors while mobile mode is on.
+// 19. Console capture is OFF by default — wrapping console.warn/error makes
+//     DevTools blame this module for every warning in the game — and works
+//     when it is switched on.
+assert.strictEqual(game.settings._defs.get("mobile-simple-play.capture").default, false,
+  "capture starts OFF");
+const quiet = globalThis.MobileSimplePlay.logBuffer.length;
+console.error("this must NOT be captured while capture is off");
+assert.strictEqual(globalThis.MobileSimplePlay.logBuffer.length, quiet, "and nothing is captured");
+
+await game.settings.set("mobile-simple-play", "capture", true);
+globalThis.MobileSimplePlay.unmount();
+globalThis.MobileSimplePlay.mount();
 const before = globalThis.MobileSimplePlay.logBuffer.length;
 console.error("a fake explosion", new Error("boom"));
 assert.ok(globalThis.MobileSimplePlay.logBuffer.length > before, "the error was captured");
 assert.ok(globalThis.MobileSimplePlay.logBuffer.some(l => l.includes("boom")), "with its message");
-ok(19, "the field log captures console errors while mobile mode is on");
+ok(19, "console capture is off by default, and captures once switched on");
 
 // 20. Teardown leaves NOTHING behind — DOM, classes, hooks, and both patches.
 const hooksBefore = Hooks.count("createChatMessage");

@@ -31,5 +31,7 @@
   "MSP.Log.Both": "Log saved to your downloads and copied to the clipboard.",
   "MSP.Log.Saved": "Log saved to your downloads.",
   "MSP.Log.Copied": "Log copied to the clipboard.",
-  "MSP.Log.Failed": "Could not save the log automatically. It was printed to the console instead."
+  "MSP.Log.Failed": "Could not save the log automatically. It was printed to the console instead.",
+  "MSP.Settings.Capture.Name": "Capture console messages",
+  "MSP.Settings.Capture.Hint": "Records warnings and errors so that More -> Save diagnostic log has something to write. Off by default: while it is on, the browser's developer tools report every warning in the game as coming from this module, which makes other modules harder to debug. Turn it on just before reproducing a problem."
 }
