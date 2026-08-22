@@ -149,6 +149,14 @@ globalThis.canvas = {
 };
 
 globalThis.ui = {
+  // A minimal ChatLog, so the postOne instrumentation of v0.1.8 has something
+  // real to wrap and unwrap.
+  chat: {
+    rendered: true,
+    isAtBottom: true,
+    get element() { return document.getElementById("chat"); },
+    async postOne(message) { calls.push(`postOne:${message?.id}`); return true; }
+  },
   sidebar: {
     // Starts COLLAPSED, as the field snapshot of 2026-08-22 showed it. That is
     // the state in which Foundry moves the chat input out of #chat.
@@ -411,4 +419,17 @@ assert.ok(plain.textContent.includes("Junior"), "carrying the author");
 globalThis.MobileSimplePlay.unmount();
 ok(23, "a card dropped by the render chain is placed by the module, twice over");
 
-console.log("\n=== 23/23 green ===");
+// 24. The postOne instrumentation wraps and, above all, UNWRAPS cleanly.
+//     A diagnostic that leaves a core method patched is worse than no
+//     diagnostic at all.
+const pristine = ui.chat.postOne;
+globalThis.MobileSimplePlay.mount();
+assert.notStrictEqual(ui.chat.postOne, pristine, "postOne was wrapped");
+calls.length = 0;
+await ui.chat.postOne({ id: "m-traced", visible: true });
+assert.ok(calls.includes("postOne:m-traced"), "and the original still runs underneath");
+globalThis.MobileSimplePlay.unmount();
+assert.strictEqual(ui.chat.postOne, pristine, "and unmount put the original back");
+ok(24, "postOne is instrumented on mount and restored on unmount");
+
+console.log("\n=== 24/24 green ===");

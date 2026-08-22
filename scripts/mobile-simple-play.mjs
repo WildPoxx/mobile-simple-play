@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.7
+ * Mobile Simple Play — v0.1.8
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -27,7 +27,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.7";
+const VERSION = "0.1.8";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -51,7 +51,7 @@ const RESOLUTION_KEYS = ["ERROR.RESOLUTION.Screen", "ERROR.RESOLUTION.Scale", "E
 /** Registry of everything we create or patch, so we can tear it all down. */
 const ui_ = {
   rail: null, bar: null, overlay: null, writeClose: null,
-  hooks: [], capture: null, notify: null, logWatch: null
+  hooks: [], capture: null, notify: null, logWatch: null, postOne: null
 };
 
 /* -------------------------------------------------- */
@@ -188,6 +188,100 @@ function stopCapture() {
     window.removeEventListener("error", ui_.capture.onError);
     window.removeEventListener("unhandledrejection", ui_.capture.onReject);
     ui_.capture = null;
+  });
+}
+
+/* -------------------------------------------------- */
+/*  Chat diagnosis — the one thing that must work      */
+/* -------------------------------------------------- */
+
+/**
+ * v0.1.8 is a DIAGNOSTIC release for one question only: why does a message
+ * created on the GM's client sometimes never appear in the player's log?
+ *
+ * Foundry can drop a message in complete silence. In ChatLog##postOne:
+ *
+ *     if ( !this.rendered || !message.visible ) return;
+ *
+ * No error, no warning, no trace. If `rendered` is false — or if `this.element`
+ * is a node that is no longer the one on screen — the card is built and thrown
+ * away, and the player sees nothing until a reload rebuilds the log from the
+ * database. That is precisely the reported symptom.
+ *
+ * So we stop guessing and record the decision points. These lines go to the
+ * BROWSER CONSOLE as well as to the diagnostic buffer, with a fixed prefix, so
+ * an ordinary console log captures the moment a message arrives — which is what
+ * the logs of 2026-08-22 could not do.
+ */
+const DIAG = "MSP-DIAG";
+
+function diag(...parts) {
+  const line = parts.join(" · ");
+  pushLog("DIAG ", [line]);
+  try { console.info(`${DIAG} |`, line); } catch { /* never break on logging */ }
+}
+
+/** A photograph of the chat's plumbing at this instant. */
+function describeChat(messageId) {
+  return safe("describe chat", () => {
+    const chat = ui.chat ?? null;
+    const own = chat?.element ?? null;                       // what Foundry writes into
+    const visible = document.querySelector("#chat");          // what the player looks at
+    const ownLog = own?.querySelector?.(".chat-log") ?? null;
+    const visLog = document.querySelector("#chat .chat-log");
+    const has = (root) => messageId && root
+      ? !!root.querySelector(`[data-message-id="${messageId}"]`) : "-";
+    return [
+      `class=${chat?.constructor?.name ?? "?"}`,
+      `rendered=${chat?.rendered}`,                           // <- the silent killer
+      `element===#chat:${own === visible}`,                   // <- the other silent killer
+      `connected=${own?.isConnected}`,
+      `cards(foundry)=${ownLog?.childElementCount ?? "-"}`,
+      `cards(visible)=${visLog?.childElementCount ?? "-"}`,
+      `isAtBottom=${chat?.isAtBottom}`,
+      `sidebarExpanded=${ui.sidebar?.expanded}`,
+      `activeTab=${ui.sidebar?.tabGroups?.primary}`,
+      `inFoundryLog=${has(ownLog)}`,
+      `inVisibleLog=${has(visLog)}`
+    ].join(" · ");
+  }) ?? "describe failed";
+}
+
+/**
+ * Wrap ChatLog#postOne so we can see whether it is called at all, and what it
+ * left behind. This is the only way to tell three very different failures
+ * apart, which look identical from the outside:
+ *
+ *   postOne never called          -> the message never reached this client
+ *   called, rendered=false        -> Foundry dropped it on purpose
+ *   called, card in foundry log
+ *          but not in visible log -> it went into a detached element
+ */
+function instrumentChat() {
+  safe("instrument chat", () => {
+    const chat = ui.chat;
+    if (!chat || ui_.postOne || typeof chat.postOne !== "function") return;
+    const prior = Object.getOwnPropertyDescriptor(chat, "postOne") ?? null;
+    const original = chat.postOne.bind(chat);
+    ui_.postOne = { prior, chat };
+    chat.postOne = async function(message, options = {}) {
+      const id = message?.id ?? "?";
+      diag(`postOne(${id}) IN`, `visible=${message?.visible}`, describeChat(id));
+      const out = await original(message, options);
+      setTimeout(() => diag(`postOne(${id}) OUT`, describeChat(id)), 500);
+      return out;
+    };
+    diag("instrumented postOne", describeChat());
+  });
+}
+
+function uninstrumentChat() {
+  safe("uninstrument chat", () => {
+    if (!ui_.postOne) return;
+    const { prior, chat } = ui_.postOne;
+    if (prior) Object.defineProperty(chat, "postOne", prior);
+    else delete chat.postOne;
+    ui_.postOne = null;
   });
 }
 
@@ -741,12 +835,12 @@ async function ensureCardLands(message, delay = 800) {
   await new Promise(r => setTimeout(r, delay));
 
   if (present()) {
-    pushLog("INFO ", [`message ${id}: Foundry rendered it (log ${before} -> ${logEl()?.childElementCount})`]);
+    diag(`message ${id}: Foundry rendered it`, `log ${before} -> ${logEl()?.childElementCount}`);
     scrollChatToBottom();
     return;
   }
 
-  pushLog("WARN ", [`message ${id}: no card after ${delay}ms — the render chain dropped it. Recovering.`]);
+  diag(`message ${id}: NO CARD after ${delay}ms — recovering`, describeChat(id));
 
   const card = await safeAsync("render the card ourselves", () => message.renderHTML());
   const target = logEl();
@@ -754,7 +848,7 @@ async function ensureCardLands(message, delay = 800) {
 
   if (card) {
     target.append(card);
-    pushLog("INFO ", [`message ${id}: recovered with renderHTML()`]);
+    diag(`message ${id}: recovered with renderHTML()`);
   } else {
     // Last resort. Ugly, but readable — and readable beats absent.
     const plain = el("li", {
@@ -765,7 +859,7 @@ async function ensureCardLands(message, delay = 800) {
       el("h4", { class: "message-sender", text: message.alias ?? message.author?.name ?? "—" })));
     plain.append(el("div", { class: "message-content", html: message.content ?? "" }));
     target.append(plain);
-    pushLog("WARN ", [`message ${id}: renderHTML() failed too; showed a plain card`]);
+    diag(`message ${id}: renderHTML() FAILED too; showed a plain card`);
   }
   scrollChatToBottom();
 }
@@ -901,10 +995,13 @@ function mount() {
   document.body.append(ui_.rail, ui_.bar, ui_.writeClose);
   setTab("chat");
   reportForeignChrome();
+  instrumentChat();
   watchChatLog();
+  diag("mounted", describeChat());
   scrollChatToBottom();
 
   const onMessage = (msg) => safe("new message", () => {
+    diag(`createChatMessage(${msg?.id ?? "?"})`, `author=${msg?.author?.name ?? "?"}`, describeChat(msg?.id));
     flagChatPip();
     // A message of our own means the player is done typing: put the field away.
     if (msg?.author?.id === game.user?.id) showChatForm(false);
@@ -948,6 +1045,7 @@ function unmount() {
     for (const [hook, fn] of ui_.hooks) Hooks.off(hook, fn);
     ui_.hooks.length = 0;
     unwatchChatLog();
+    uninstrumentChat();
     restoreResolutionNotices();
     stopCapture();
     safe("restart the ticker", () => canvas?.app?.ticker?.start());
