@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.3
+ * Mobile Simple Play — v0.1.4
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -27,7 +27,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -51,7 +51,7 @@ const RESOLUTION_KEYS = ["ERROR.RESOLUTION.Screen", "ERROR.RESOLUTION.Scale", "E
 /** Registry of everything we create or patch, so we can tear it all down. */
 const ui_ = {
   rail: null, bar: null, overlay: null, writeClose: null,
-  hooks: [], capture: null, notify: null
+  hooks: [], capture: null, notify: null, logWatch: null
 };
 
 /* -------------------------------------------------- */
@@ -654,6 +654,46 @@ function scrollChatToBottom() {
   });
 }
 
+/**
+ * Watch the chat log and scroll to the bottom whenever a card is added.
+ *
+ * v0.1.2 scrolled on the `createChatMessage` hook, and that was too early:
+ * the hook fires when the DOCUMENT is created, while Foundry renders the card
+ * through an async queue. We scrolled to the bottom of a log that did not yet
+ * contain the new message, Foundry then appended it below the fold, and the
+ * player saw nothing until a reload rebuilt the log from scratch.
+ *
+ * Watching the DOM removes the race: we react to the card ARRIVING, not to the
+ * message being created.
+ */
+function watchChatLog() {
+  if (ui_.logWatch) return;
+  safe("watch chat log", () => {
+    const log = document.querySelector("#chat .chat-log");
+    if (!log || typeof MutationObserver !== "function") {
+      pushLog("WARN ", ["chat log not found; live scrolling is OFF"]);
+      return;
+    }
+    const observer = new MutationObserver(records => {
+      let added = 0;
+      for (const r of records) added += r.addedNodes.length;
+      if (!added) return;
+      pushLog("INFO ", [`chat log grew by ${added} node(s); scrolling to bottom`]);
+      scrollChatToBottom();
+    });
+    observer.observe(log, { childList: true });
+    ui_.logWatch = observer;
+    pushLog("INFO ", [`watching the chat log (${log.childElementCount} card(s) at start)`]);
+  });
+}
+
+function unwatchChatLog() {
+  safe("unwatch chat log", () => {
+    ui_.logWatch?.disconnect();
+    ui_.logWatch = null;
+  });
+}
+
 /* -------------------------------------------------- */
 /*  Hotbar — our own overlay, not Foundry's bar        */
 /* -------------------------------------------------- */
@@ -735,13 +775,24 @@ function mount() {
 
   document.body.append(ui_.rail, ui_.bar, ui_.writeClose);
   setTab("chat");
+  watchChatLog();
   scrollChatToBottom();
 
   const onMessage = (msg) => safe("new message", () => {
     flagChatPip();
     // A message of our own means the player is done typing: put the field away.
     if (msg?.author?.id === game.user?.id) showChatForm(false);
-    scrollChatToBottom();
+    // Instrumentation, not decoration: if a message is created but its card
+    // never reaches the log, THIS is the line that proves it next time.
+    safe("log the arrival", () => {
+      const id = msg?.id ?? "?";
+      const before = document.querySelector("#chat .chat-log")?.childElementCount ?? -1;
+      setTimeout(() => {
+        const after = document.querySelector("#chat .chat-log")?.childElementCount ?? -1;
+        const landed = !!document.querySelector(`#chat .chat-log [data-message-id="${id}"]`);
+        pushLog("INFO ", [`message ${id}: log ${before} -> ${after}, card in DOM: ${landed}`]);
+      }, 800);
+    });
   });
   Hooks.on("createChatMessage", onMessage);
   ui_.hooks.push(["createChatMessage", onMessage]);
@@ -778,6 +829,7 @@ function unmount() {
     closeOverlay();
     for (const [hook, fn] of ui_.hooks) Hooks.off(hook, fn);
     ui_.hooks.length = 0;
+    unwatchChatLog();
     restoreResolutionNotices();
     stopCapture();
     safe("restart the ticker", () => canvas?.app?.ticker?.start());
