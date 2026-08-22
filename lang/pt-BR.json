@@ -1,0 +1,6 @@
+{
+  "MSP.Settings.Enabled.Name": "Modo celular (só neste navegador)",
+  "MSP.Settings.Enabled.Hint": "Liga a interface de celular. A escolha vale só para este navegador, neste aparelho — não muda nada para o Mestre nem para os outros jogadores. Você também pode desligar pelo botão Mais, dentro do modo celular.",
+  "MSP.Settings.Skills.Name": "Perícias no trilho",
+  "MSP.Settings.Skills.Hint": "Nomes das perícias que aparecem no trilho lateral, separados por vírgula. Deixe em branco para usar as mais comuns automaticamente (as cinco centrais do SWADE mais Lutar e Atirar). Armas e itens não precisam ser listados aqui: basta marcá-los como favoritos na ficha."
+}

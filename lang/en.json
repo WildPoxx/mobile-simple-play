@@ -1,0 +1,6 @@
+{
+  "MSP.Settings.Enabled.Name": "Mobile mode (this browser only)",
+  "MSP.Settings.Enabled.Hint": "Turns on the phone interface. The choice applies only to this browser on this device — it changes nothing for the GM or other players. You can also turn it off from the More button inside mobile mode.",
+  "MSP.Settings.Skills.Name": "Skills on the rail",
+  "MSP.Settings.Skills.Hint": "Comma-separated names of the skills shown on the side rail. Leave blank to use the common ones automatically (the five SWADE core skills plus Fighting and Shooting). Weapons and items do not need to be listed here: just mark them as favourites on the sheet."
+}

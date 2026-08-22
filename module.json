@@ -1,0 +1,32 @@
+{
+  "id": "mobile-simple-play",
+  "title": "Mobile Simple Play",
+  "description": "Interface de celular para o Foundry VTT, centrada no chat. Feita para o jogador que só tem telefone. Não faz nada até ser ligada, e só se liga no navegador em que o jogador a ligar.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "authors": [
+    {
+      "name": "Mario Bastos",
+      "url": "https://github.com/WildPoxx"
+    }
+  ],
+  "esmodules": ["scripts/mobile-simple-play.mjs"],
+  "styles": ["styles/mobile-simple-play.css"],
+  "languages": [
+    { "lang": "en", "name": "English", "path": "lang/en.json" },
+    { "lang": "pt-BR", "name": "Português (Brasil)", "path": "lang/pt-BR.json" }
+  ],
+  "relationships": {
+    "requires": [],
+    "systems": []
+  },
+  "socket": false,
+  "url": "https://github.com/WildPoxx/mobile-simple-play",
+  "manifest": "https://github.com/WildPoxx/mobile-simple-play/releases/latest/download/module.json",
+  "download": "https://github.com/WildPoxx/mobile-simple-play/releases/latest/download/module.zip",
+  "license": "LICENSE",
+  "readme": "https://github.com/WildPoxx/mobile-simple-play#readme"
+}

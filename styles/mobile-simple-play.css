@@ -1,0 +1,336 @@
+/*
+ * Mobile Simple Play — v0.1.0
+ *
+ * TUDO neste arquivo esta' sob `body.msp-on`. Sem essa classe — que so' e'
+ * acrescentada quando o jogador liga o modo celular NAQUELE navegador — este
+ * arquivo nao muda um pixel da interface do Foundry.
+ *
+ * Medidas conforme a ESPEC-TELA v1.0: tela de 360 x 800 px de CSS,
+ * trilho de 48, barra de 64, alvos de toque de 48, corpo de texto 16.
+ */
+
+body.msp-on {
+  --msp-rail: 48px;
+  --msp-bar: 64px;
+  --msp-gesture: env(safe-area-inset-bottom, 0px);
+  --msp-ink: #e8e3d8;
+  --msp-back: #16130f;
+  --msp-line: #4a4238;
+  --msp-accent: #c9a227;
+}
+
+/* -------------------------------------------------- */
+/*  1. Esconder a interface de computador              */
+/* -------------------------------------------------- */
+
+body.msp-on #ui-left,
+body.msp-on #ui-top,
+body.msp-on #ui-right-column-1,
+body.msp-on #sidebar > nav.tabs {
+  display: none !important;
+}
+
+/* A hotbar existe, mas so' aparece quando o jogador pede. */
+body.msp-on #ui-bottom { display: none !important; }
+body.msp-on.msp-hotbar #ui-bottom {
+  display: flex !important;
+  position: fixed;
+  left: 0; right: 0;
+  bottom: calc(var(--msp-bar) + var(--msp-gesture));
+  z-index: 60;
+}
+
+/* -------------------------------------------------- */
+/*  2. O miolo                                         */
+/* -------------------------------------------------- */
+
+body.msp-on #interface { padding: 0 !important; }
+
+body.msp-on #ui-right {
+  position: fixed !important;
+  top: 0;
+  left: var(--msp-rail);
+  right: 0;
+  bottom: calc(var(--msp-bar) + var(--msp-gesture));
+  width: auto !important;
+  max-width: none !important;
+  z-index: 20;
+}
+
+body.msp-on #sidebar {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+}
+
+body.msp-on #sidebar-content { height: 100%; }
+
+/* O chat ocupa o miolo inteiro. */
+body.msp-on #chat.chat-sidebar { height: 100%; }
+body.msp-on #chat .chat-scroll { flex: 1 1 auto; }
+
+/* Cartoes com margem pequena — o miolo tem 312 px, nao 360. */
+body.msp-on #chat .chat-log { padding: 0 8px; }
+body.msp-on #chat .chat-message { font-size: 16px; }
+
+/* O campo de mensagem so' aparece quando pedido. */
+body.msp-on #chat .chat-form { display: none !important; }
+body.msp-on.msp-writing #chat .chat-form {
+  display: block !important;
+  position: fixed;
+  left: var(--msp-rail);
+  right: 0;
+  bottom: calc(var(--msp-bar) + var(--msp-gesture));
+  z-index: 70;
+  background: var(--msp-back);
+  border-top: 1px solid var(--msp-line);
+  padding: 6px;
+}
+
+/* -------------------------------------------------- */
+/*  3. Abas: qual conteudo aparece                     */
+/* -------------------------------------------------- */
+
+body.msp-on[data-msp-tab="chat"] #board { visibility: hidden; }
+body.msp-on[data-msp-tab="map"] #ui-right { display: none !important; }
+body.msp-on[data-msp-tab="map"] #board { visibility: visible; }
+body.msp-on[data-msp-tab="map"] #hud { z-index: 25; }
+
+/* -------------------------------------------------- */
+/*  4. Trilho de acoes                                 */
+/* -------------------------------------------------- */
+
+body.msp-on #msp-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--msp-rail);
+  bottom: calc(var(--msp-bar) + var(--msp-gesture));
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--msp-back);
+  border-right: 1px solid var(--msp-line);
+  overflow: hidden;
+}
+
+body.msp-on .msp-rail-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+body.msp-on .msp-rail-top::-webkit-scrollbar { display: none; }
+
+body.msp-on .msp-rail-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 auto;
+  border-top: 1px solid var(--msp-line);
+}
+
+body.msp-on .msp-slot {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  margin: 2px 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .04);
+  color: var(--msp-ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+body.msp-on .msp-slot:active { background: rgba(201, 162, 39, .35); }
+body.msp-on .msp-slot img {
+  width: 36px; height: 36px;
+  object-fit: cover;
+  border: 0;
+  border-radius: 4px;
+}
+body.msp-on .msp-slot i { font-size: 18px; }
+body.msp-on .msp-target { border-color: var(--msp-accent); }
+
+body.msp-on .msp-div {
+  width: 32px;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--msp-line);
+}
+
+/* Selos de estado — so' leitura. */
+body.msp-on .msp-status { display: flex; flex-direction: column; align-items: center; }
+body.msp-on .msp-badge {
+  width: 40px;
+  margin: 2px 0;
+  padding: 2px 0;
+  border-radius: 4px;
+  font-size: 11px;
+  text-align: center;
+  color: var(--msp-ink);
+  background: rgba(255, 255, 255, .06);
+}
+body.msp-on .msp-wounds  { box-shadow: inset 3px 0 0 #a33; }
+body.msp-on .msp-fatigue { box-shadow: inset 3px 0 0 #37a; }
+body.msp-on .msp-bennies { box-shadow: inset 3px 0 0 var(--msp-accent); }
+
+/* Toque longo mostra o nome. */
+body.msp-on .msp-tip {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: #000;
+  color: var(--msp-ink);
+  border: 1px solid var(--msp-line);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 14px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* -------------------------------------------------- */
+/*  5. Barra unica                                     */
+/* -------------------------------------------------- */
+
+body.msp-on #msp-bar {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: var(--msp-gesture);
+  height: var(--msp-bar);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: var(--msp-back);
+  border-top: 1px solid var(--msp-line);
+}
+
+body.msp-on #msp-bar button {
+  min-width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--msp-ink);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* SO' AS ABAS acendem. E' o que separa navegar de agir. */
+body.msp-on .msp-tab.is-active {
+  color: var(--msp-accent);
+  box-shadow: inset 0 -3px 0 var(--msp-accent);
+}
+
+body.msp-on .msp-pip {
+  position: absolute;
+  margin: -18px 0 0 -8px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--msp-accent);
+}
+
+body.msp-on #msp-pc {
+  width: 72px !important;
+  height: 72px !important;
+  margin-top: -8px;            /* elevado 8 px sobre a barra */
+  border-radius: 50% !important;
+  border: 2px solid var(--msp-accent) !important;
+  background: var(--msp-back) !important;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+body.msp-on #msp-pc img { width: 100%; height: 100%; object-fit: cover; }
+
+/* -------------------------------------------------- */
+/*  6. Sobreposicoes (alvo, mais)                      */
+/* -------------------------------------------------- */
+
+body.msp-on #msp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, .6);
+  display: flex;
+  align-items: flex-end;
+}
+
+body.msp-on .msp-overlay-box {
+  width: 100%;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--msp-back);
+  border-top: 2px solid var(--msp-accent);
+  color: var(--msp-ink);
+}
+
+body.msp-on .msp-overlay-head {
+  padding: 10px 12px;
+  font-size: 16px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--msp-line);
+}
+
+body.msp-on .msp-overlay-body { overflow-y: auto; padding: 6px; }
+
+body.msp-on .msp-overlay-foot {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--msp-line);
+}
+body.msp-on .msp-overlay-foot button {
+  flex: 1;
+  min-height: 48px;
+  border: 1px solid var(--msp-line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .05);
+  color: var(--msp-ink);
+  font-size: 16px;
+}
+body.msp-on .msp-overlay-foot .msp-primary {
+  border-color: var(--msp-accent);
+  color: var(--msp-accent);
+}
+
+body.msp-on .msp-row {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+  background: none;
+  color: var(--msp-ink);
+  font-size: 16px;
+  text-align: left;
+}
+body.msp-on .msp-row img { width: 36px; height: 36px; object-fit: cover; border: 0; border-radius: 4px; }
+body.msp-on .msp-row-name { flex: 1; }
+body.msp-on .msp-check { opacity: .18; }
+body.msp-on .msp-row.is-on { background: rgba(201, 162, 39, .18); }
+body.msp-on .msp-row.is-on .msp-check { opacity: 1; color: var(--msp-accent); }
+
+body.msp-on .msp-more-list { display: flex; flex-direction: column; gap: 6px; }
+body.msp-on .msp-more-list button {
+  min-height: 48px;
+  border: 1px solid var(--msp-line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .05);
+  color: var(--msp-ink);
+  font-size: 16px;
+}
+
+body.msp-on .msp-empty { text-align: center; opacity: .5; padding: 12px; }
