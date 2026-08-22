@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.2
+ * Mobile Simple Play — v0.1.3
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -27,7 +27,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -511,11 +511,29 @@ function closeOverlay() {
 /*  The single bottom bar                              */
 /* -------------------------------------------------- */
 
-/** Force Foundry's sidebar onto the chat tab.
- *  Without this, whichever tab happened to be open when mobile mode was turned
- *  on stays open — and since we hide the tab strip, there is no way back. */
-function sidebarToChat() {
-  safe("sidebar to chat", () => ui.sidebar?.changeTab?.("chat", "primary"));
+/**
+ * Pin Foundry's sidebar: EXPANDED, and on the chat tab.
+ *
+ * Both halves matter, and the first one is not cosmetic. Foundry documents the
+ * rule in ChatLog#_toggleNotifications:
+ *
+ *   "if the sidebar is expanded, and the chat log is the active tab, embed chat
+ *    input into it. Otherwise, embed chat input into the notifications area."
+ *
+ * The notifications area lives in #ui-right-column-1 — which mobile mode hides.
+ * So with the sidebar COLLAPSED, Foundry quietly moves the message field into an
+ * element we made invisible, and the player is left with a chat they cannot
+ * write into and a field that appears to be broken. Keeping the sidebar expanded
+ * keeps the log and the input where our CSS expects them.
+ *
+ * The tab half is the older fix: whichever tab happened to be open when mobile
+ * mode started stayed open, and we hide the tab strip, so there was no way back.
+ */
+function pinSidebar() {
+  safe("pin sidebar", () => {
+    if (ui.sidebar?.expanded === false) ui.sidebar.expand?.();
+    ui.sidebar?.changeTab?.("chat", "primary");
+  });
 }
 
 function setTab(tab) {
@@ -530,7 +548,7 @@ function setTab(tab) {
       if (tab === "map") canvas.app.ticker.start();
       else canvas.app.ticker.stop();
     });
-    if (tab === "chat") { sidebarToChat(); clearChatPip(); }
+    if (tab === "chat") { pinSidebar(); clearChatPip(); }
     else showChatForm(false);   // the writing field must not float over the map
   });
 }
@@ -620,7 +638,10 @@ function showChatForm(show) {
   safe("message field", () => {
     document.body.classList.toggle("msp-writing", show === true);
     if (!show) return;
-    const form = document.querySelector("#chat .chat-form");
+    // Look for the form anywhere: Foundry relocates it between #chat and the
+    // notifications area depending on sidebar state. pinSidebar() should keep
+    // it inside #chat, but we do not want to depend on that alone.
+    const form = document.querySelector("#chat .chat-form") ?? document.querySelector(".chat-form");
     form?.querySelector("textarea, input, [contenteditable='true'], .editor-content")?.focus?.();
     scrollChatToBottom();
   });
@@ -735,12 +756,16 @@ function mount() {
     ui_.hooks.push([h, refresh]);
   }
 
-  // If anything re-renders the sidebar, keep it pinned to the chat.
-  const pin = () => safe("pin sidebar", () => {
-    if ((document.body.dataset.mspTab ?? "chat") === "chat") sidebarToChat();
+  // Keep the sidebar pinned. Anything may re-render or collapse it — a core
+  // action, another module, a resize — and a collapse is the failure that
+  // silently moves the message field out of our layout.
+  const pin = () => safe("re-pin sidebar", () => {
+    if ((document.body.dataset.mspTab ?? "chat") === "chat") pinSidebar();
   });
-  Hooks.on("renderSidebar", pin);
-  ui_.hooks.push(["renderSidebar", pin]);
+  for (const h of ["renderSidebar", "collapseSidebar"]) {
+    Hooks.on(h, pin);
+    ui_.hooks.push([h, pin]);
+  }
 }
 
 function unmount() {

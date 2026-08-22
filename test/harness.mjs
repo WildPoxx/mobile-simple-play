@@ -149,7 +149,13 @@ globalThis.canvas = {
 };
 
 globalThis.ui = {
-  sidebar: { changeTab: (tab, group) => calls.push(`sidebar.changeTab:${tab}/${group}`) },
+  sidebar: {
+    // Starts COLLAPSED, as the field snapshot of 2026-08-22 showed it. That is
+    // the state in which Foundry moves the chat input out of #chat.
+    expanded: false,
+    expand() { this.expanded = true; calls.push("sidebar.expand"); },
+    changeTab: (tab, group) => calls.push(`sidebar.changeTab:${tab}/${group}`)
+  },
   notifications: {
     notify(message, type) { calls.push(`notify:${type}:${message}`); return 1; },
     info(m) { return this.notify(m, "info"); },
@@ -253,14 +259,21 @@ ok(13, "battery brake: PIXI ticker stops off the map, restarts on it");
 
 /* ---- v0.1.2: the six fixes ---- */
 
-// 14. The sidebar is forced onto the chat tab. Without this, whatever tab was
-//     open when mobile mode started stays open, with no tab strip to escape it.
+// 14. The sidebar is pinned EXPANDED and on the chat tab.
+//     Expanded is the load-bearing half: collapsed, Foundry moves the message
+//     field into the notifications area, which mobile mode hides.
+// (the `calls` log has been cleared by earlier checks, so assert on STATE:
+//  the sidebar started collapsed in the fixture and must be expanded by now)
+assert.strictEqual(ui.sidebar.expanded, true, "the collapsed sidebar was expanded on mount");
 calls.length = 0;
 globalThis.MobileSimplePlay.setTab("chat");
 assert.ok(calls.includes("sidebar.changeTab:chat/primary"), "sidebar pinned to chat");
+ui.sidebar.expanded = false;                 // something collapses it behind our back
+Hooks.callAll("collapseSidebar");
+assert.strictEqual(ui.sidebar.expanded, true, "a collapse from outside is undone");
 Hooks.callAll("renderSidebar");
-assert.ok(calls.filter(c => c === "sidebar.changeTab:chat/primary").length >= 2, "re-pinned when the sidebar re-renders");
-ok(14, "the sidebar is forced onto the chat tab, and stays there");
+assert.ok(calls.filter(c => c === "sidebar.changeTab:chat/primary").length >= 2, "re-pinned on re-render");
+ok(14, "the sidebar is pinned EXPANDED and on chat, and re-pinned if anything changes it");
 
 // 15. Foundry's "window too small" notice: the visible one is removed, and
 //     future ones are swallowed while mobile mode is on.
