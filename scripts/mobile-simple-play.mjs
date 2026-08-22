@@ -1,11 +1,12 @@
 /**
- * Mobile Simple Play — v0.1.1
+ * Mobile Simple Play — v0.1.2
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
  *   THE MODULE IS BORN INERT. While the `enabled` setting is false — and it is
- *   false by default — it adds no DOM node, swaps no core class, and registers
- *   no listener. The only thing it does on load is declare three settings.
+ *   false by default — it adds no DOM node, swaps no core class, patches no
+ *   global and registers no listener. The only thing it does on load is declare
+ *   three settings.
  *
  *   `enabled` is "client" scope: it lives in the localStorage of THAT browser.
  *   Turning it on from a phone changes nothing for the GM, for the other
@@ -14,6 +15,11 @@
  *   Everything that runs afterwards is wrapped in try/catch. A bug of ours
  *   becomes a console line, never a world that will not open.
  *
+ *   This is why the log capture (§ Field log) starts at mount() and not at
+ *   init(): patching console while the module is off would break the rule
+ *   above. The cost is that errors thrown before mobile mode is turned on are
+ *   not captured. That is a deliberate trade, not an oversight.
+ *
  * ARCHITECTURAL CHOICE: v0.1 IS CSS-FIRST.
  *   We do not replace CONFIG.ui.chat or any other core class. We toggle a
  *   <body> class and append elements of OUR OWN. Less powerful, and far safer
@@ -21,6 +27,7 @@
  */
 
 const MOD = "mobile-simple-play";
+const VERSION = "0.1.2";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -37,8 +44,15 @@ const DEFAULT_SKILLS = [
   "Shooting", "Atirar", "Tiro"
 ];
 
-/** Registry of our own elements, so we can tear everything down. */
-const ui_ = { rail: null, bar: null, sheet: null, overlay: null, hooks: [] };
+/** Foundry's own "your window is too small" notices. On a phone they are always
+ *  true and never actionable, so mobile mode suppresses them. */
+const RESOLUTION_KEYS = ["ERROR.RESOLUTION.Screen", "ERROR.RESOLUTION.Scale", "ERROR.RESOLUTION.Window"];
+
+/** Registry of everything we create or patch, so we can tear it all down. */
+const ui_ = {
+  rail: null, bar: null, overlay: null, writeClose: null,
+  hooks: [], capture: null, notify: null
+};
 
 /* -------------------------------------------------- */
 /*  Small utilities                                    */
@@ -100,6 +114,170 @@ function el(tag, props = {}, ...children) {
 /** The player's actor. No canvas, no token: it is the assigned character. */
 function myActor() {
   return safe("myActor", () => game.user?.character ?? null) ?? null;
+}
+
+/* -------------------------------------------------- */
+/*  Field log — so a phone test produces evidence      */
+/* -------------------------------------------------- */
+
+const LOG_MAX = 500;
+const logBuffer = [];
+
+function pushLog(kind, args) {
+  try {
+    const stamp = new Date().toISOString().slice(11, 23);
+    const text = args.map(a => {
+      if (a instanceof Error) return `${a.name}: ${a.message}\n${a.stack ?? ""}`;
+      if (a && typeof a === "object") {
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }
+      return String(a);
+    }).join(" ");
+    logBuffer.push(`[${stamp}] ${kind}  ${text}`);
+    if (logBuffer.length > LOG_MAX) logBuffer.shift();
+  } catch {
+    // Logging must never be the thing that breaks. Swallow and move on.
+  }
+}
+
+function startCapture() {
+  if (ui_.capture) return;
+  safe("start log capture", () => {
+    const original = { warn: console.warn, error: console.error };
+    console.warn = (...a) => { pushLog("WARN ", a); original.warn.apply(console, a); };
+    console.error = (...a) => { pushLog("ERROR", a); original.error.apply(console, a); };
+    const onError = ev => pushLog("UNCAUGHT", [ev.message, `${ev.filename}:${ev.lineno}:${ev.colno}`, ev.error]);
+    const onReject = ev => pushLog("REJECTED", [ev.reason]);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onReject);
+    ui_.capture = { original, onError, onReject };
+    pushLog("INFO ", [`Mobile Simple Play ${VERSION} — capture started`]);
+  });
+}
+
+function stopCapture() {
+  safe("stop log capture", () => {
+    if (!ui_.capture) return;
+    console.warn = ui_.capture.original.warn;
+    console.error = ui_.capture.original.error;
+    window.removeEventListener("error", ui_.capture.onError);
+    window.removeEventListener("unhandledrejection", ui_.capture.onReject);
+    ui_.capture = null;
+  });
+}
+
+/** The header that makes a log readable three days later. */
+function logHeader() {
+  const g = safe("log header", () => ({
+    foundry: game.version ?? game.release?.version ?? "?",
+    system: `${game.system?.id ?? "?"} ${game.system?.version ?? ""}`,
+    user: game.user?.name ?? "?",
+    actor: myActor()?.name ?? "(none)",
+    modules: game.modules ? [...game.modules].filter(m => m.active).length : "?"
+  })) ?? {};
+  return [
+    "=== Mobile Simple Play — field log ===",
+    `module          ${VERSION}`,
+    `foundry         ${g.foundry}`,
+    `system          ${g.system}`,
+    `user / actor    ${g.user} / ${g.actor}`,
+    `active modules  ${g.modules}`,
+    `viewport        ${window.innerWidth}x${window.innerHeight}  dpr ${window.devicePixelRatio}`,
+    `screen          ${window.screen?.width}x${window.screen?.height}`,
+    `touch           ${isTouch()}`,
+    `canvas          ${canvas?.ready ? "ready" : "not ready"}`,
+    `user agent      ${navigator.userAgent}`,
+    `captured        ${logBuffer.length} line(s), newest last`,
+    "======================================",
+    ""
+  ].join("\n");
+}
+
+/**
+ * Save the captured log. Tries a real file download first, and always copies to
+ * the clipboard as well — on a phone, one of the two paths usually survives.
+ */
+async function saveLog() {
+  const text = logHeader() + logBuffer.join("\n") + "\n";
+  let downloaded = false;
+  let copied = false;
+
+  safe("download log", () => {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const a = el("a", { href: url, download: `msp-log-${stamp}.txt` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => safe("revoke url", () => URL.revokeObjectURL(url)), 10000);
+    downloaded = true;
+  });
+
+  try {
+    await navigator.clipboard.writeText(text);
+    copied = true;
+  } catch {
+    // Clipboard needs a secure context and a user gesture; not always granted.
+  }
+
+  const how = downloaded && copied ? t("MSP.Log.Both", "Log saved to your downloads and copied to the clipboard.")
+    : downloaded ? t("MSP.Log.Saved", "Log saved to your downloads.")
+    : copied ? t("MSP.Log.Copied", "Log copied to the clipboard.")
+    : t("MSP.Log.Failed", "Could not save the log automatically.");
+  safe("log notice", () => ui.notifications?.info?.(how));
+  if (!downloaded && !copied) safe("log to console", () => console.log(text));
+}
+
+/* -------------------------------------------------- */
+/*  Foundry's window-size notices                      */
+/* -------------------------------------------------- */
+
+/**
+ * On a phone, Foundry permanently complains that the window is smaller than
+ * 1024x768. It is right, it is unfixable, and it covers the chat. While mobile
+ * mode is on we suppress it — the notice, not the condition.
+ */
+function silenceResolutionNotices() {
+  safe("silence resolution notices", () => {
+    const notes = ui.notifications;
+    if (!notes || ui_.notify) return;
+
+    // 1. Stop future ones. `#validateResolution` re-fires on every resize, and
+    //    a mobile browser resizes constantly as the URL bar hides and shows.
+    //    We remember the exact property descriptor we are shadowing, so that
+    //    unmount puts back what was there — whether that was an inherited
+    //    prototype method (Foundry's own) or another module's override. Simply
+    //    deleting the property would destroy the latter.
+    const prior = Object.getOwnPropertyDescriptor(notes, "notify") ?? null;
+    const original = notes.notify.bind(notes);
+    ui_.notify = { prior, original };
+    notes.notify = function(message, type, options) {
+      if (typeof message === "string" && RESOLUTION_KEYS.includes(message)) return -1;
+      return original(message, type, options);
+    };
+
+    // 2. Remove the one already on screen. We match on the localized text up to
+    //    its first placeholder, so this works in any language.
+    const prefixes = RESOLUTION_KEYS.map(key => {
+      const s = t(key, "");
+      const cut = s.indexOf("{");
+      return (cut > 12 ? s.slice(0, cut) : s.slice(0, 48)).trim();
+    }).filter(p => p.length > 12);
+    for (const node of document.querySelectorAll("#notifications .notification")) {
+      const txt = (node.textContent ?? "").trim();
+      if (prefixes.some(p => txt.startsWith(p))) node.remove();
+    }
+  });
+}
+
+function restoreResolutionNotices() {
+  safe("restore resolution notices", () => {
+    if (!ui_.notify) return;
+    if (ui_.notify.prior) Object.defineProperty(ui.notifications, "notify", ui_.notify.prior);
+    else delete ui.notifications.notify;
+    ui_.notify = null;
+  });
 }
 
 /* -------------------------------------------------- */
@@ -249,7 +427,7 @@ function sceneTokens() {
 }
 
 function currentTargetIds() {
-  return safe("current targets", () => new Set([...(game.user?.targets ?? [])].map(t => t.id))) ?? new Set();
+  return safe("current targets", () => new Set([...(game.user?.targets ?? [])].map(tok => tok.id))) ?? new Set();
 }
 
 function applyTargets(ids) {
@@ -333,6 +511,13 @@ function closeOverlay() {
 /*  The single bottom bar                              */
 /* -------------------------------------------------- */
 
+/** Force Foundry's sidebar onto the chat tab.
+ *  Without this, whichever tab happened to be open when mobile mode was turned
+ *  on stays open — and since we hide the tab strip, there is no way back. */
+function sidebarToChat() {
+  safe("sidebar to chat", () => ui.sidebar?.changeTab?.("chat", "primary"));
+}
+
 function setTab(tab) {
   safe("switch tab", () => {
     document.body.dataset.mspTab = tab;
@@ -345,7 +530,8 @@ function setTab(tab) {
       if (tab === "map") canvas.app.ticker.start();
       else canvas.app.ticker.stop();
     });
-    if (tab === "chat") clearChatPip();
+    if (tab === "chat") { sidebarToChat(); clearChatPip(); }
+    else showChatForm(false);   // the writing field must not float over the map
   });
 }
 
@@ -381,7 +567,7 @@ function buildBar() {
   else pc.append(el("i", { class: "fa-solid fa-user" }));
   bar.append(pc);
 
-  // "More" — write in chat, hotbar, turn off.
+  // "More" — write in chat, hotbar, save log, turn off.
   bar.append(el("button", {
     type: "button",
     class: "msp-more",
@@ -393,37 +579,104 @@ function buildBar() {
 }
 
 function openMore() {
+  const writing = document.body.classList.contains("msp-writing");
   const box = el("div", { class: "msp-more-list" });
+
   box.append(el("button", {
-    type: "button", text: t("MSP.More.Write", "Write in chat"),
-    onclick: () => { closeOverlay(); toggleChatForm(true); }
+    type: "button",
+    text: writing ? t("MSP.More.StopWriting", "Close the message field")
+                  : t("MSP.More.Write", "Write in chat"),
+    onclick: () => { closeOverlay(); showChatForm(!writing); }
   }));
   box.append(el("button", {
     type: "button", text: t("MSP.More.Hotbar", "Hotbar"),
-    onclick: () => { closeOverlay(); toggleHotbar(); }
+    onclick: () => { closeOverlay(); openHotbar(); }
+  }));
+  box.append(el("button", {
+    type: "button", text: t("MSP.More.SaveLog", "Save diagnostic log"),
+    onclick: () => { closeOverlay(); saveLog(); }
   }));
   box.append(el("button", {
     type: "button", text: t("MSP.More.Disable", "Turn off mobile mode"),
     onclick: () => { closeOverlay(); disableAndReload(); }
   }));
+
   openOverlay(t("MSP.More.Label", "More"), box, [
     { label: t("MSP.Common.Close", "Close"), onClick: closeOverlay, primary: true }
   ]);
 }
 
-function toggleChatForm(show) {
+/* -------------------------------------------------- */
+/*  Writing in the chat                                */
+/* -------------------------------------------------- */
+
+/**
+ * Show or hide Foundry's message field.
+ * v0.1.1 could only ever open it, and nothing closed it again — it stayed on
+ * top of the chat forever. It is a toggle now, it closes itself once a message
+ * goes out, and it carries its own close button.
+ */
+function showChatForm(show) {
   safe("message field", () => {
-    document.body.classList.toggle("msp-writing", show);
-    if (show) {
-      const form = document.querySelector("#chat .chat-form");
-      form?.scrollIntoView({ block: "end" });
-      form?.querySelector("textarea, input, [contenteditable='true'], .editor-content")?.focus?.();
-    }
+    document.body.classList.toggle("msp-writing", show === true);
+    if (!show) return;
+    const form = document.querySelector("#chat .chat-form");
+    form?.querySelector("textarea, input, [contenteditable='true'], .editor-content")?.focus?.();
+    scrollChatToBottom();
   });
 }
 
-function toggleHotbar() {
-  safe("hotbar", () => document.body.classList.toggle("msp-hotbar"));
+function scrollChatToBottom() {
+  safe("scroll chat", () => {
+    const scroll = document.querySelector("#chat .chat-scroll");
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+  });
+}
+
+/* -------------------------------------------------- */
+/*  Hotbar — our own overlay, not Foundry's bar        */
+/* -------------------------------------------------- */
+
+/**
+ * Foundry's hotbar is a wide desktop strip; dropped onto a phone it lands on
+ * top of the chat and fights the bottom bar. So we do not show the hotbar — we
+ * show what is IN it, as a list, in the same overlay as everything else.
+ */
+function hotbarMacros() {
+  return safe("read hotbar", () => {
+    const slots = game.user?.hotbar ?? {};
+    return Object.entries(slots)
+      .map(([slot, id]) => ({ slot: Number(slot), macro: game.macros?.get(id) ?? null }))
+      .filter(entry => entry.macro)
+      .sort((a, b) => a.slot - b.slot);
+  }) ?? [];
+}
+
+function openHotbar() {
+  const list = el("div", { class: "msp-list" });
+
+  for (const { slot, macro } of hotbarMacros()) {
+    const row = el("button", {
+      type: "button",
+      class: "msp-row",
+      onclick: () => {
+        closeOverlay();
+        safe(`macro "${macro.name}"`, () => macro.execute());
+      }
+    });
+    row.append(el("img", { src: macro.img, alt: "" }));
+    row.append(el("span", { class: "msp-row-name", text: macro.name }));
+    row.append(el("span", { class: "msp-slot-num", text: String(slot) }));
+    list.append(row);
+  }
+
+  if (!list.childElementCount) {
+    list.append(el("p", { class: "msp-empty", text: t("MSP.Hotbar.Empty", "No macros on the hotbar.") }));
+  }
+
+  openOverlay(t("MSP.More.Hotbar", "Hotbar"), list, [
+    { label: t("MSP.Common.Close", "Close"), onClick: closeOverlay, primary: true }
+  ]);
 }
 
 /* -------------------------------------------------- */
@@ -446,14 +699,29 @@ function clearChatPip() {
 function mount() {
   if (document.body.classList.contains(BODY_CLASS)) return;
   log("turning mobile mode on in this browser.");
+  startCapture();
   document.body.classList.add(BODY_CLASS);
+  silenceResolutionNotices();
 
   ui_.rail = buildRail();
   ui_.bar = buildBar();
-  document.body.append(ui_.rail, ui_.bar);
-  setTab("chat");
+  ui_.writeClose = el("button", {
+    type: "button",
+    id: "msp-write-close",
+    "aria-label": t("MSP.Common.Close", "Close"),
+    onclick: () => showChatForm(false)
+  }, el("i", { class: "fa-solid fa-xmark" }));
 
-  const onMessage = () => safe("new-message pip", flagChatPip);
+  document.body.append(ui_.rail, ui_.bar, ui_.writeClose);
+  setTab("chat");
+  scrollChatToBottom();
+
+  const onMessage = (msg) => safe("new message", () => {
+    flagChatPip();
+    // A message of our own means the player is done typing: put the field away.
+    if (msg?.author?.id === game.user?.id) showChatForm(false);
+    scrollChatToBottom();
+  });
   Hooks.on("createChatMessage", onMessage);
   ui_.hooks.push(["createChatMessage", onMessage]);
 
@@ -466,17 +734,27 @@ function mount() {
     Hooks.on(h, refresh);
     ui_.hooks.push([h, refresh]);
   }
+
+  // If anything re-renders the sidebar, keep it pinned to the chat.
+  const pin = () => safe("pin sidebar", () => {
+    if ((document.body.dataset.mspTab ?? "chat") === "chat") sidebarToChat();
+  });
+  Hooks.on("renderSidebar", pin);
+  ui_.hooks.push(["renderSidebar", pin]);
 }
 
 function unmount() {
   safe("unmount", () => {
-    document.body.classList.remove(BODY_CLASS, "msp-writing", "msp-hotbar");
+    document.body.classList.remove(BODY_CLASS, "msp-writing");
     delete document.body.dataset.mspTab;
     ui_.rail?.remove(); ui_.rail = null;
     ui_.bar?.remove(); ui_.bar = null;
+    ui_.writeClose?.remove(); ui_.writeClose = null;
     closeOverlay();
     for (const [hook, fn] of ui_.hooks) Hooks.off(hook, fn);
     ui_.hooks.length = 0;
+    restoreResolutionNotices();
+    stopCapture();
     safe("restart the ticker", () => canvas?.app?.ticker?.start());
   });
 }
@@ -488,23 +766,34 @@ async function disableAndReload() {
   });
 }
 
-/** Asks exactly once, and only on a touch screen. Offer, never impose. */
+/**
+ * Offer mobile mode. Asks on EVERY load of a touch device while the mode is
+ * off — that is deliberate: on a phone the settings window is nearly unusable,
+ * so a player who turns the mode off would otherwise have no way back in.
+ * "Don't ask on this device" is the escape hatch for anyone who finds it noisy.
+ */
 async function maybeAsk() {
-  if (setting("asked") === true) return;
+  if (setting("dismissed") === true) return;
   if (!isTouch()) return;
   await safe("first-run prompt", async () => {
-    await game.settings.set(MOD, "asked", true);
     const D = foundry.applications.api.DialogV2;
-    const yes = await D.confirm({
+    const choice = await D.wait({
       window: { title: "Mobile Simple Play" },
       content: `<p>${t("MSP.Prompt.Detected", "This device looks like a phone or a tablet.")}</p>
                 <p>${t("MSP.Prompt.Question", "Turn on <strong>mobile mode</strong> in this browser? It applies here only — it changes nothing for the other players, and you can turn it off at any time from the <em>More</em> button.")}</p>`,
+      buttons: [
+        { action: "yes", label: t("MSP.Prompt.Yes", "Turn it on"), default: true },
+        { action: "later", label: t("MSP.Prompt.Later", "Not now") },
+        { action: "never", label: t("MSP.Prompt.Never", "Don't ask on this device") }
+      ],
       rejectClose: false,
       modal: true
     });
-    if (yes) {
+    if (choice === "yes") {
       await game.settings.set(MOD, "enabled", true);
       mount();
+    } else if (choice === "never") {
+      await game.settings.set(MOD, "dismissed", true);
     }
   });
 }
@@ -537,14 +826,15 @@ Hooks.once("init", () => {
       })
     });
 
-    game.settings.register(MOD, "asked", {
+    // "Never offer mobile mode again in this browser."
+    game.settings.register(MOD, "dismissed", {
       scope: "client",
       config: false,
       type: Boolean,
       default: false
     });
   });
-  log("loaded, inert. Nothing happens until someone turns it on.");
+  log(`v${VERSION} loaded, inert. Nothing happens until someone turns it on.`);
 });
 
 Hooks.once("ready", () => {
@@ -555,4 +845,4 @@ Hooks.once("ready", () => {
 });
 
 // Exposed for console debugging only, should we need it.
-globalThis.MobileSimplePlay = { mount, unmount, setTab, openTargetPicker };
+globalThis.MobileSimplePlay = { mount, unmount, setTab, openTargetPicker, openHotbar, saveLog, maybeAsk, logBuffer };

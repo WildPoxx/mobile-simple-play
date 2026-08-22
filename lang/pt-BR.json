@@ -3,30 +3,33 @@
   "MSP.Settings.Enabled.Hint": "Liga a interface de celular. A escolha vale só para este navegador, neste aparelho — não muda nada para o Mestre nem para os outros jogadores. Você também pode desligar pelo botão Mais, dentro do modo celular.",
   "MSP.Settings.Skills.Name": "Perícias no trilho",
   "MSP.Settings.Skills.Hint": "Nomes das perícias que aparecem no trilho lateral, separados por vírgula. Deixe em branco para usar as mais comuns automaticamente (as cinco centrais do SWADE mais Lutar e Atirar). Armas e itens não precisam ser listados aqui: basta marcá-los como favoritos na ficha.",
-
   "MSP.Rail.Label": "Ações",
   "MSP.Bar.Label": "Navegação",
   "MSP.Bar.Character": "Personagem",
-
   "MSP.Tab.Chat": "Chat",
   "MSP.Tab.Map": "Mapa",
-
   "MSP.Status.Wounds": "Ferimentos",
   "MSP.Status.Fatigue": "Fadiga",
   "MSP.Status.Bennies": "Bennies",
-
   "MSP.Target.Label": "Alvo",
   "MSP.Target.Title": "Alvo",
   "MSP.Target.Empty": "Nenhum token nesta cena.",
-
   "MSP.More.Label": "Mais",
   "MSP.More.Write": "Escrever no chat",
   "MSP.More.Hotbar": "Hotbar",
   "MSP.More.Disable": "Desligar o modo celular",
-
   "MSP.Common.Clear": "Limpar",
   "MSP.Common.Close": "Fechar",
-
   "MSP.Prompt.Detected": "Este aparelho parece ser um celular ou tablet.",
-  "MSP.Prompt.Question": "Ativar o <strong>modo celular</strong> neste navegador? Ele só vale aqui — não muda nada para os outros jogadores, e você pode desligar a qualquer momento pelo botão <em>Mais</em>."
+  "MSP.Prompt.Question": "Ativar o <strong>modo celular</strong> neste navegador? Ele só vale aqui — não muda nada para os outros jogadores, e você pode desligar a qualquer momento pelo botão <em>Mais</em>.",
+  "MSP.More.StopWriting": "Fechar o campo de mensagem",
+  "MSP.More.SaveLog": "Salvar log de diagnóstico",
+  "MSP.Hotbar.Empty": "Nenhuma macro na hotbar.",
+  "MSP.Prompt.Yes": "Ativar",
+  "MSP.Prompt.Later": "Agora não",
+  "MSP.Prompt.Never": "Não perguntar neste aparelho",
+  "MSP.Log.Both": "Log salvo nos downloads e copiado para a área de transferência.",
+  "MSP.Log.Saved": "Log salvo nos downloads.",
+  "MSP.Log.Copied": "Log copiado para a área de transferência.",
+  "MSP.Log.Failed": "Não consegui salvar o log automaticamente. Ele foi impresso no console."
 }

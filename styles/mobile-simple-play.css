@@ -1,5 +1,5 @@
 /*
- * Mobile Simple Play — v0.1.1
+ * Mobile Simple Play — v0.1.2
  *
  * EVERYTHING in this file sits under `body.msp-on`. Without that class — which
  * is only added when the player turns mobile mode on in THAT browser — this
@@ -30,14 +30,20 @@ body.msp-on #sidebar > nav.tabs {
   display: none !important;
 }
 
-/* The hotbar exists, but only shows up when the player asks for it. */
+/* Foundry's hotbar never shows. On a phone it lands on top of the chat and
+   fights the bottom bar. Its CONTENTS are offered instead, in our overlay
+   (see openHotbar() in the script). */
 body.msp-on #ui-bottom { display: none !important; }
-body.msp-on.msp-hotbar #ui-bottom {
-  display: flex !important;
-  position: fixed;
-  left: 0; right: 0;
-  bottom: calc(var(--msp-bar) + var(--msp-gesture));
-  z-index: 60;
+
+/* Foundry's notifications are full-width toasts. Keep them inside the middle,
+   and never let them take the whole screen. */
+body.msp-on #notifications {
+  left: var(--msp-rail) !important;
+  right: 0 !important;
+  width: auto !important;
+  max-height: 40vh;
+  overflow: hidden;
+  z-index: 80;
 }
 
 /* -------------------------------------------------- */
@@ -69,9 +75,18 @@ body.msp-on #sidebar-content { height: 100%; }
 body.msp-on #chat.chat-sidebar { height: 100%; }
 body.msp-on #chat .chat-scroll { flex: 1 1 auto; }
 
-/* Small card margins — the middle is 312 px wide, not 360. */
-body.msp-on #chat .chat-log { padding: 0 8px; }
+/* Small card margins — the middle is 312 px wide, not 360.
+   The bottom padding is what keeps the LAST card clear of the bottom bar:
+   without it the newest roll — the one you actually want to read — sits
+   underneath the navigation. */
+body.msp-on #chat .chat-log {
+  padding: 0 8px 16px;
+}
 body.msp-on #chat .chat-message { font-size: 16px; }
+
+/* While the message field is open it floats over the log, so the log needs
+   room to scroll past it. */
+body.msp-on.msp-writing #chat .chat-log { padding-bottom: 108px; }
 
 /* The message field only appears on request. */
 body.msp-on #chat .chat-form { display: none !important; }
@@ -84,7 +99,26 @@ body.msp-on.msp-writing #chat .chat-form {
   z-index: 70;
   background: var(--msp-back);
   border-top: 1px solid var(--msp-line);
-  padding: 6px;
+  padding: 6px 44px 6px 6px;   /* room on the right for the close button */
+}
+
+/* The way OUT of the message field. v0.1.1 had no way to close it. */
+body.msp-on #msp-write-close { display: none; }
+body.msp-on.msp-writing #msp-write-close {
+  display: grid;
+  place-items: center;
+  position: fixed;
+  right: 4px;
+  bottom: calc(var(--msp-bar) + var(--msp-gesture) + 6px);
+  width: 36px;
+  height: 36px;
+  z-index: 72;
+  border: 1px solid var(--msp-line);
+  border-radius: 6px;
+  background: var(--msp-back);
+  color: var(--msp-ink);
+  font-size: 18px;
+  cursor: pointer;
 }
 
 /* -------------------------------------------------- */
@@ -322,6 +356,16 @@ body.msp-on .msp-row-name { flex: 1; }
 body.msp-on .msp-check { opacity: .18; }
 body.msp-on .msp-row.is-on { background: rgba(201, 162, 39, .18); }
 body.msp-on .msp-row.is-on .msp-check { opacity: 1; color: var(--msp-accent); }
+
+body.msp-on .msp-slot-num {
+  min-width: 22px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .08);
+  font-size: 12px;
+  text-align: center;
+  opacity: .7;
+}
 
 body.msp-on .msp-more-list { display: flex; flex-direction: column; gap: 6px; }
 body.msp-on .msp-more-list button {

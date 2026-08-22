@@ -1,0 +1,7 @@
+{
+  "name": "mobile-simple-play-test",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node harness.mjs" },
+  "devDependencies": { "jsdom": "^24.0.0" }
+}

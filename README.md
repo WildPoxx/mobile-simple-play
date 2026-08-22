@@ -7,7 +7,7 @@ through the browser on their phone. Every mobile VTT module starts from the map;
 one starts from the chat — because in Foundry the chat is not conversation, it is the
 ledger of the table. Whoever has the chat has the game.
 
-**Status: v0.1.1 — first test version.** Not yet used at a real table.
+**Status: v0.1.2 — under test.** First run at a real table on 2026-08-22.
 
 ---
 
@@ -69,12 +69,18 @@ any actor, item, scene or message. Uninstalling leaves no residue.
   centre (opens the sheet) and the **More** button (write in chat, hotbar, turn off).
 - **New-message pip** on the Chat tab while you are on the map.
 - **Battery brake**: off the Map tab, the graphics engine stops drawing.
+- **A quieter phone**: Foundry's permanent "this window is smaller than 1024x768"
+  notice is suppressed while mobile mode is on. On a phone it is always true, never
+  actionable, and it covers the chat.
+- **Diagnostic log**: *More → Save diagnostic log* writes a text file with the
+  console errors captured since mobile mode was turned on, plus the version, device
+  and viewport details. There is no F12 on a phone; this is the substitute.
 
 ## What v0.1 does not do yet
 
 - the **Quests** tab (reading mission Journals);
-- **touch gestures on the map** — the scene can be seen, but dragging a token and
-  pinch-zooming have not been worked on;
+- **touch gestures on the map** — a token can be dragged, but panning is slippery,
+  pinch-zoom does nothing, and the movement ruler paints over the scene;
 - **reflow of the SWADE sheet**, which still breaks on narrow screens;
 - spending a Benny from the rail;
 - a proper configuration screen for the skills (for now it is a text field in settings).
@@ -117,6 +123,22 @@ never surface as a raw identifier on screen.
 4. **The module is removable.** Uninstalling must not break the world or leave residue.
 5. **No account, no proxy, no third-party service.**
 6. **One-handed.** 48 px touch targets, no nested menus, no precise dragging.
+
+---
+
+## Development
+
+The module has no build step: the files in the repository are the files Foundry
+loads. There is a dry test harness — a fake Foundry built on jsdom — which
+exercises mounting, the rail, targeting, the overlays, and above all the teardown.
+
+```
+cd test && npm install && node harness.mjs
+```
+
+It does not replace testing at a table. What it catches is the class of mistake that
+would break someone's world: an API called the wrong way, a DOM that does not mount,
+a global patched and never restored.
 
 ---
 
