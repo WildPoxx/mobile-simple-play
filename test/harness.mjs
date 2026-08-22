@@ -374,4 +374,41 @@ assert.ok(document.getElementById("msp-rail"));
 globalThis.MobileSimplePlay.unmount();
 ok(22, "with no assigned character it still mounts, without throwing");
 
-console.log("\n=== 22/22 green ===");
+// 23. THE POINT OF v0.1.7: when the render chain drops a card, we place it.
+//     Reproduces the field failure of 2026-08-22, where chat-portrait threw
+//     during rendering and the player's card never reached the log.
+globalThis.MobileSimplePlay.mount();
+const chatLog = document.querySelector("#chat .chat-log");
+chatLog.innerHTML = "";
+const orphan = {
+  id: "msg-dropped",
+  alias: "Junior, Filho da Areia",
+  author: { id: "someone-else", name: "Junior" },
+  content: "<p>rolled a 10</p>",
+  renderHTML: async () => {
+    const li = document.createElement("li");
+    li.className = "chat-message message";
+    li.setAttribute("data-message-id", "msg-dropped");
+    li.textContent = "rendered by renderHTML()";
+    return li;
+  }
+};
+Hooks.callAll("createChatMessage", orphan);   // Foundry never appends the card
+await new Promise(r => setTimeout(r, 1100));  // ensureCardLands waits 800ms
+const rescued = chatLog.querySelector('[data-message-id="msg-dropped"]');
+assert.ok(rescued, "the dropped card was placed by the module");
+assert.strictEqual(rescued.textContent, "rendered by renderHTML()", "via ChatMessage#renderHTML()");
+
+// And when renderHTML() itself blows up, a plain card still beats silence.
+chatLog.innerHTML = "";
+const hopeless = { ...orphan, id: "msg-hopeless", renderHTML: async () => { throw new Error("nope"); } };
+Hooks.callAll("createChatMessage", hopeless);
+await new Promise(r => setTimeout(r, 1100));
+const plain = chatLog.querySelector('[data-message-id="msg-hopeless"]');
+assert.ok(plain, "a plain card was shown instead");
+assert.ok(plain.classList.contains("msp-rescued"), "and it is marked as rescued");
+assert.ok(plain.textContent.includes("Junior"), "carrying the author");
+globalThis.MobileSimplePlay.unmount();
+ok(23, "a card dropped by the render chain is placed by the module, twice over");
+
+console.log("\n=== 23/23 green ===");

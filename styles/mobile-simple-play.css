@@ -1,5 +1,5 @@
 /*
- * Mobile Simple Play — v0.1.6
+ * Mobile Simple Play — v0.1.7
  *
  * EVERYTHING in this file sits under `body.msp-on`. Without that class — which
  * is only added when the player turns mobile mode on in THAT browser — this
@@ -451,3 +451,9 @@ body.msp-on .msp-more-list button {
 }
 
 body.msp-on .msp-empty { text-align: center; opacity: .5; padding: 12px; }
+
+/* A card this module had to place itself because the render chain dropped it.
+   Marked so the difference is visible rather than silently papered over. */
+body.msp-on .msp-rescued {
+  border-left: 3px solid var(--msp-accent);
+}

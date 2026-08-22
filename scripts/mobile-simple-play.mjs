@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.6
+ * Mobile Simple Play — v0.1.7
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -27,7 +27,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.6";
+const VERSION = "0.1.7";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -80,6 +80,20 @@ function t(key, fallback) {
 function safe(label, fn) {
   try {
     return fn();
+  } catch (err) {
+    warn(`failure in "${label}" — the module carries on, Foundry carries on.`, err);
+    return undefined;
+  }
+}
+
+/**
+ * The async sibling of safe(). safe() only guards SYNCHRONOUS throws: hand it
+ * an async function and it hands back a rejected promise, which then escapes
+ * the try/catch entirely. The test harness caught exactly that in v0.1.7.
+ */
+async function safeAsync(label, fn) {
+  try {
+    return await fn();
   } catch (err) {
     warn(`failure in "${label}" — the module carries on, Foundry carries on.`, err);
     return undefined;
@@ -698,6 +712,64 @@ function watchChatLog() {
   });
 }
 
+/**
+ * Make sure a new message actually lands in the log — and put it there
+ * ourselves if it does not.
+ *
+ * Foundry renders a chat card through a chain of hooks that every module is
+ * free to join. If one of them throws, the card is never appended, and the
+ * player sees nothing until a reload rebuilds the log from the database. The
+ * field log of 2026-08-22 shows exactly that shape of failure on the player's
+ * client:
+ *
+ *     chat-portrait | Impossible to get message user
+ *     The renderChatMessage hook is deprecated ... at SwadeChatMessage.renderHTML
+ *
+ * This module cannot fix other people's modules. What it can do is refuse to
+ * let the chat — the whole point of the product — depend on all of them
+ * behaving. So: wait a moment, and if the card is not there, build it from
+ * `ChatMessage#renderHTML()` and append it. If even that fails, fall back to a
+ * plain card with author and content, because a plain card beats silence.
+ */
+async function ensureCardLands(message, delay = 800) {
+  const id = message?.id;
+  if (!id) return;
+  const logEl = () => document.querySelector("#chat .chat-log");
+  const present = () => !!logEl()?.querySelector(`[data-message-id="${id}"]`);
+  const before = logEl()?.childElementCount ?? -1;
+
+  await new Promise(r => setTimeout(r, delay));
+
+  if (present()) {
+    pushLog("INFO ", [`message ${id}: Foundry rendered it (log ${before} -> ${logEl()?.childElementCount})`]);
+    scrollChatToBottom();
+    return;
+  }
+
+  pushLog("WARN ", [`message ${id}: no card after ${delay}ms — the render chain dropped it. Recovering.`]);
+
+  const card = await safeAsync("render the card ourselves", () => message.renderHTML());
+  const target = logEl();
+  if (!target || present()) return;
+
+  if (card) {
+    target.append(card);
+    pushLog("INFO ", [`message ${id}: recovered with renderHTML()`]);
+  } else {
+    // Last resort. Ugly, but readable — and readable beats absent.
+    const plain = el("li", {
+      class: "chat-message message flexcol msp-rescued",
+      "data-message-id": id
+    });
+    plain.append(el("header", { class: "message-header" },
+      el("h4", { class: "message-sender", text: message.alias ?? message.author?.name ?? "—" })));
+    plain.append(el("div", { class: "message-content", html: message.content ?? "" }));
+    target.append(plain);
+    pushLog("WARN ", [`message ${id}: renderHTML() failed too; showed a plain card`]);
+  }
+  scrollChatToBottom();
+}
+
 function unwatchChatLog() {
   safe("unwatch chat log", () => {
     ui_.logWatch?.disconnect();
@@ -836,17 +908,9 @@ function mount() {
     flagChatPip();
     // A message of our own means the player is done typing: put the field away.
     if (msg?.author?.id === game.user?.id) showChatForm(false);
-    // Instrumentation, not decoration: if a message is created but its card
-    // never reaches the log, THIS is the line that proves it next time.
-    safe("log the arrival", () => {
-      const id = msg?.id ?? "?";
-      const before = document.querySelector("#chat .chat-log")?.childElementCount ?? -1;
-      setTimeout(() => {
-        const after = document.querySelector("#chat .chat-log")?.childElementCount ?? -1;
-        const landed = !!document.querySelector(`#chat .chat-log [data-message-id="${id}"]`);
-        pushLog("INFO ", [`message ${id}: log ${before} -> ${after}, card in DOM: ${landed}`]);
-      }, 800);
-    });
+    // Do not trust the render chain: check that the card lands, and place it
+    // ourselves if it does not. See ensureCardLands().
+    safeAsync("ensure the card lands", () => ensureCardLands(msg));
   });
   Hooks.on("createChatMessage", onMessage);
   ui_.hooks.push(["createChatMessage", onMessage]);
