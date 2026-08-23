@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.8
+ * Mobile Simple Play — v0.1.9
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -27,7 +27,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.8";
+const VERSION = "0.1.9";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -51,7 +51,8 @@ const RESOLUTION_KEYS = ["ERROR.RESOLUTION.Screen", "ERROR.RESOLUTION.Scale", "E
 /** Registry of everything we create or patch, so we can tear it all down. */
 const ui_ = {
   rail: null, bar: null, overlay: null, writeClose: null,
-  hooks: [], capture: null, notify: null, logWatch: null, postOne: null
+  hooks: [], capture: null, notify: null, logWatch: null, postOne: null,
+  stick: null
 };
 
 /* -------------------------------------------------- */
@@ -196,22 +197,26 @@ function stopCapture() {
 /* -------------------------------------------------- */
 
 /**
- * v0.1.8 is a DIAGNOSTIC release for one question only: why does a message
- * created on the GM's client sometimes never appear in the player's log?
+ * v0.1.8 was a DIAGNOSTIC release for one question: why does a message created
+ * on the GM's client never appear in the player's log? It wrote the decision
+ * points to the browser console, and the field log of 2026-08-22 answered it.
  *
- * Foundry can drop a message in complete silence. In ChatLog##postOne:
+ * THE ANSWER, so nobody has to re-derive it: the message was never lost. Every
+ * candidate mechanism was refuted by the log itself —
  *
- *     if ( !this.rendered || !message.visible ) return;
+ *     postOne(...) IN  · visible=true · rendered=true · element===#chat:true
+ *     postOne(...) OUT · cards 89 -> 90 · inFoundryLog=true · inVisibleLog=true
  *
- * No error, no warning, no trace. If `rendered` is false — or if `this.element`
- * is a node that is no longer the one on screen — the card is built and thrown
- * away, and the player sees nothing until a reload rebuilds the log from the
- * database. That is precisely the reported symptom.
+ * The card reached the player's own <ol class="chat-log"> every single time,
+ * including one authored by the Gamemaster. What never happened was the SCROLL:
+ * with 89 messages the log stands ~29 000 px tall inside a 728 px window, so a
+ * card appended at the bottom sits some 28 000 px below the fold. Invisible is
+ * indistinguishable from absent. See the comment on scrollChatToBottom() for
+ * why both Foundry's scroll and ours failed, and what v0.1.9 does instead.
  *
- * So we stop guessing and record the decision points. These lines go to the
- * BROWSER CONSOLE as well as to the diagnostic buffer, with a fixed prefix, so
- * an ordinary console log captures the moment a message arrives — which is what
- * the logs of 2026-08-22 could not do.
+ * The instrumentation stays — it is cheap, off the hot path, and the next chat
+ * bug should be answered from a log rather than from a guess. It now also
+ * reports the scroll geometry, the datum whose absence cost five releases.
  */
 const DIAG = "MSP-DIAG";
 
@@ -239,6 +244,7 @@ function describeChat(messageId) {
       `cards(foundry)=${ownLog?.childElementCount ?? "-"}`,
       `cards(visible)=${visLog?.childElementCount ?? "-"}`,
       `isAtBottom=${chat?.isAtBottom}`,
+      `scroll=${describeScroll()}`,
       `sidebarExpanded=${ui.sidebar?.expanded}`,
       `activeTab=${ui.sidebar?.tabGroups?.primary}`,
       `inFoundryLog=${has(ownLog)}`,
@@ -762,14 +768,116 @@ function showChatForm(show) {
     // it inside #chat, but we do not want to depend on that alone.
     const form = document.querySelector("#chat .chat-form") ?? document.querySelector(".chat-form");
     form?.querySelector("textarea, input, [contenteditable='true'], .editor-content")?.focus?.();
-    scrollChatToBottom();
+    // Opening the field is a deliberate act: go to the bottom even if the
+    // player had scrolled up to read back.
+    scrollChatToBottom("message field opened", { force: true });
   });
 }
 
-function scrollChatToBottom() {
+/* -------------------------------------------------- */
+/*  Keeping the chat at the bottom                     */
+/* -------------------------------------------------- */
+
+/**
+ * THE BUG THIS SOLVES — v0.1.9.
+ *
+ * Up to v0.1.8 the chat "did not update" for the phone player. The v0.1.8
+ * diagnostic release settled what was NOT happening: the message reached the
+ * client, `postOne` ran, `rendered` was true, and the card landed in the very
+ * `<ol class="chat-log">` the player is looking at. Card count went 89 -> 90 ->
+ * 91 -> 92, every time. Nothing was lost.
+ *
+ * So the card was always there. The VIEW never moved to it. With 89 messages
+ * the log is roughly 29 000 px tall inside a 728 px window: a card appended at
+ * the bottom is nearly 28 000 px below the fold. Invisible is indistinguishable
+ * from absent.
+ *
+ * Two things were supposed to scroll, and both fail for the same underlying
+ * reason — they scroll ONCE, at a moment when the card's final height is not
+ * yet known.
+ *
+ *  1. Foundry's own `ChatLog#scrollBottom({waitImages: true})`. It calls
+ *     `Application.waitForImages(scroll)` over the WHOLE log, then sets
+ *     scrollTop. That helper has no timeout and assigns `img.onload`/`onerror`
+ *     directly — so one image that never settles, or one module that reassigns
+ *     a handler on an image (chat-portrait puts an <img> on every message; this
+ *     world has 68 of them in the log), and the await never resolves. scrollTop
+ *     is then never set at all.
+ *
+ *  2. Our own v0.1.2-0.1.8 `scrollChatToBottom()`: a single synchronous
+ *     `scrollTop = scrollHeight` fired from the MutationObserver, i.e. at the
+ *     instant the card is inserted — before its images have loaded and before
+ *     layout has settled. A SWADE roll card with dice and a portrait grows by
+ *     hundreds of pixels a moment later, and the view is left stranded above
+ *     the message it just scrolled to.
+ *
+ * The fix is to stop treating "scroll to the bottom" as an event and treat it
+ * as a STATE. While the player is at the bottom, the module keeps them there:
+ * a ResizeObserver on the log re-pins on every height change, whatever caused
+ * it — an image, a font, Dice So Nice, another module rewriting a card. If the
+ * player deliberately scrolls up to read back, sticking stops until they return
+ * to the bottom, because a chat that yanks you downwards while you read is
+ * worse than one that does not move.
+ */
+
+/** How far from the bottom still counts as "at the bottom", in px. */
+const STICK_SLACK = 120;
+
+/** Retry ladder, in ms. Covers late images, fonts and slow module rewrites. */
+const STICK_RETRIES = [0, 50, 150, 350, 700, 1200, 2000];
+
+function scrollEl() {
+  return document.querySelector("#chat .chat-scroll");
+}
+
+function describeScroll() {
+  const s = scrollEl();
+  if (!s) return "no .chat-scroll";
+  const gap = s.scrollHeight - s.scrollTop - s.clientHeight;
+  return `top=${Math.round(s.scrollTop)}/h=${s.scrollHeight}/win=${s.clientHeight}/gap=${Math.round(gap)}`;
+}
+
+/** Is the player at the bottom right now? */
+function atBottom() {
+  const s = scrollEl();
+  if (!s) return true;
+  return (s.scrollHeight - s.scrollTop - s.clientHeight) <= STICK_SLACK;
+}
+
+/**
+ * Pin the log to the bottom now, and keep re-pinning over the next two seconds
+ * so that late growth cannot strand the newest card below the fold.
+ *
+ * Does nothing while the player has scrolled up to read back.
+ */
+function scrollChatToBottom(reason = "", { force = false } = {}) {
   safe("scroll chat", () => {
-    const scroll = document.querySelector("#chat .chat-scroll");
-    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+    const st = ui_.stick;
+    if (!st) return;                             // mobile mode is not mounted
+    if (!st.on && !force) return;                // the player is reading back
+    if (force) st.on = true;
+
+    // Every deferred pin re-checks that THIS mount is still the live one. A
+    // retry ladder that outlives unmount would scroll the desktop interface the
+    // player has just gone back to — and a stale ladder from a previous mount
+    // would fight the current one. Check 28 holds this.
+    const pin = () => safe("pin bottom", () => {
+      if (ui_.stick !== st) return;
+      const s = scrollEl();
+      if (!s) return;
+      s.scrollTop = s.scrollHeight;
+    });
+
+    pin();
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(pin);
+    for (const ms of STICK_RETRIES) {
+      const id = setTimeout(() => {
+        pin();
+        st.timers.delete(id);
+      }, ms);
+      st.timers.add(id);
+    }
+    if (reason) diag(`pin bottom (${reason})`, describeScroll());
   });
 }
 
@@ -786,23 +894,74 @@ function scrollChatToBottom() {
  * message being created.
  */
 function watchChatLog() {
-  if (ui_.logWatch) return;
+  if (ui_.stick) return;
   safe("watch chat log", () => {
-    const log = document.querySelector("#chat .chat-log");
-    if (!log || typeof MutationObserver !== "function") {
-      pushLog("WARN ", ["chat log not found; live scrolling is OFF"]);
+    if (typeof MutationObserver !== "function") {
+      pushLog("WARN ", ["MutationObserver missing; live scrolling is OFF"]);
       return;
     }
-    const observer = new MutationObserver(records => {
-      let added = 0;
-      for (const r of records) added += r.addedNodes.length;
-      if (!added) return;
-      pushLog("INFO ", [`chat log grew by ${added} node(s); scrolling to bottom`]);
-      scrollChatToBottom();
+
+    const st = ui_.stick = {
+      on: true,          // sticking to the bottom
+      timers: new Set(),
+      mo: null,          // cards arriving
+      ro: null,          // the log changing height
+      onScroll: null,
+      log: null          // the .chat-log we are currently watching
+    };
+
+    /* -- the player's own scrolling decides whether we stick ------------- */
+    st.onScroll = () => safe("chat scrolled", () => {
+      const was = st.on;
+      st.on = atBottom();
+      if (was !== st.on) diag(`stick ${st.on ? "ON (back at the bottom)" : "OFF (reading back)"}`, describeScroll());
     });
-    observer.observe(log, { childList: true });
-    ui_.logWatch = observer;
-    pushLog("INFO ", [`watching the chat log (${log.childElementCount} card(s) at start)`]);
+
+    /* -- re-pin whenever the log changes HEIGHT --------------------------
+       This is the part that makes it reliable. A card is inserted at its
+       pre-image height and grows afterwards; every earlier version scrolled
+       once, at insertion, and was left above the card. A height change is the
+       real signal, and it fires however the growth was caused. */
+    const bindLog = () => safe("bind chat log", () => {
+      const log = document.querySelector("#chat .chat-log");
+      if (!log || log === st.log) return;
+      st.log = log;
+      st.ro?.disconnect();
+      if (typeof ResizeObserver === "function") {
+        st.ro = new ResizeObserver(() => {
+          if (st.on) scrollChatToBottom();
+        });
+        st.ro.observe(log);
+      }
+      pushLog("INFO ", [`watching the chat log (${log.childElementCount} card(s))`]);
+    });
+
+    /* -- cards arriving, and the log element being replaced ---------------
+       We observe #chat with subtree:true rather than the <ol> itself: Foundry
+       re-renders the log part on some state changes, and an observer bound to
+       the old <ol> would sit on a detached node, silently doing nothing for
+       the rest of the session. */
+    const chat = document.querySelector("#chat");
+    if (!chat) {
+      pushLog("WARN ", ["#chat not found; live scrolling is OFF"]);
+      return;
+    }
+    st.mo = new MutationObserver(records => safe("chat mutated", () => {
+      let cards = 0;
+      for (const r of records) {
+        for (const n of r.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.matches?.("[data-message-id]")) cards++;
+          if (n.matches?.(".chat-log") || n.querySelector?.(".chat-log")) bindLog();
+        }
+      }
+      if (!cards) return;
+      scrollChatToBottom(`${cards} card(s) arrived`);
+    }));
+    st.mo.observe(chat, { childList: true, subtree: true });
+
+    bindLog();
+    scrollEl()?.addEventListener("scroll", st.onScroll, { passive: true });
   });
 }
 
@@ -835,8 +994,8 @@ async function ensureCardLands(message, delay = 800) {
   await new Promise(r => setTimeout(r, delay));
 
   if (present()) {
-    diag(`message ${id}: Foundry rendered it`, `log ${before} -> ${logEl()?.childElementCount}`);
-    scrollChatToBottom();
+    diag(`message ${id}: Foundry rendered it`, `log ${before} -> ${logEl()?.childElementCount}`, describeScroll());
+    scrollChatToBottom(`card ${id} landed`);
     return;
   }
 
@@ -861,13 +1020,19 @@ async function ensureCardLands(message, delay = 800) {
     target.append(plain);
     diag(`message ${id}: renderHTML() FAILED too; showed a plain card`);
   }
-  scrollChatToBottom();
+  scrollChatToBottom(`card ${id} recovered`, { force: true });
 }
 
 function unwatchChatLog() {
   safe("unwatch chat log", () => {
-    ui_.logWatch?.disconnect();
-    ui_.logWatch = null;
+    const st = ui_.stick;
+    if (!st) return;
+    st.mo?.disconnect();
+    st.ro?.disconnect();
+    for (const id of st.timers) clearTimeout(id);
+    st.timers.clear();
+    if (st.onScroll) scrollEl()?.removeEventListener("scroll", st.onScroll);
+    ui_.stick = null;
   });
 }
 
@@ -998,7 +1163,7 @@ function mount() {
   instrumentChat();
   watchChatLog();
   diag("mounted", describeChat());
-  scrollChatToBottom();
+  scrollChatToBottom("mounted", { force: true });
 
   const onMessage = (msg) => safe("new message", () => {
     diag(`createChatMessage(${msg?.id ?? "?"})`, `author=${msg?.author?.name ?? "?"}`, describeChat(msg?.id));

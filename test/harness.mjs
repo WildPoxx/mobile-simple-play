@@ -37,6 +37,12 @@ globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 globalThis.HTMLElement = dom.window.HTMLElement;
 globalThis.Event = dom.window.Event;
+/* Node has neither of these, and the module guards on `typeof ... === "function"`.
+   Without them it took the "live scrolling is OFF" branch and every check still
+   went green — the observer that the whole chat depends on was never once
+   exercised by this harness. Found while writing check 25. */
+globalThis.MutationObserver = dom.window.MutationObserver;
+globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
 // Node 22 exposes `navigator` as a getter-only global, so redefine it.
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
 globalThis.Blob = dom.window.Blob;
@@ -44,6 +50,31 @@ globalThis.URL = dom.window.URL;
 dom.window.URL.createObjectURL = () => "blob:fake";
 dom.window.URL.revokeObjectURL = () => {};
 window.matchMedia = q => ({ matches: q.includes("coarse"), media: q, addEventListener() {}, removeEventListener() {} });
+
+/* ---------------- Layout that jsdom does not do ---------------- */
+/* jsdom has no layout engine, so scrollHeight/clientHeight are always 0 and a
+   ResizeObserver does not exist at all. Both are supplied here, because the bug
+   v0.1.9 fixes lives precisely in that gap: a card is inserted at one height and
+   GROWS a moment later when its images arrive. Faking the geometry lets the
+   tests reproduce that sequence deterministically, which a real browser cannot
+   be asked to do on demand. */
+const resizeObservers = [];
+globalThis.ResizeObserver = class {
+  constructor(cb) { this.cb = cb; this.targets = []; resizeObservers.push(this); }
+  observe(el) { this.targets.push(el); }
+  disconnect() {
+    this.targets.length = 0;
+    const i = resizeObservers.indexOf(this);
+    if (i >= 0) resizeObservers.splice(i, 1);
+  }
+};
+/** What a late-loading image does to the log, on demand. */
+const fireResize = () => { for (const ro of [...resizeObservers]) ro.cb([], ro); };
+/** Give an element a size jsdom would otherwise report as zero. */
+const geometry = (el, scrollHeight, clientHeight) => {
+  Object.defineProperty(el, "scrollHeight", { value: scrollHeight, configurable: true });
+  Object.defineProperty(el, "clientHeight", { value: clientHeight, configurable: true });
+};
 
 const calls = [];
 
@@ -432,4 +463,117 @@ globalThis.MobileSimplePlay.unmount();
 assert.strictEqual(ui.chat.postOne, pristine, "and unmount put the original back");
 ok(24, "postOne is instrumented on mount and restored on unmount");
 
-console.log("\n=== 24/24 green ===");
+// 25. THE REGRESSION THIS RELEASE EXISTS FOR.
+//     A card is appended, the module scrolls to the bottom — and THEN the card
+//     grows, because its portrait and dice images have just arrived. Every
+//     version from 0.1.2 to 0.1.8 scrolled once, at insertion, and was left
+//     stranded thousands of pixels above the message it had just scrolled to.
+//     The player saw a chat that "did not update". It had updated; the view had
+//     not followed.
+globalThis.MobileSimplePlay.mount();
+{
+  const scroll = document.querySelector("#chat .chat-scroll");
+  const logEl = document.querySelector("#chat .chat-log");
+  // Let mount's own retry ladder finish, so what follows measures the
+  // behaviour under test and not a leftover timer.
+  await new Promise(r => setTimeout(r, 2100));
+
+  // A tall log in a short window: 29 000 px of history behind a 728 px viewport,
+  // which is the real geometry measured on the player's phone.
+  geometry(scroll, 29000, 728);
+  scroll.scrollTop = 0;
+
+  const card = document.createElement("li");
+  card.className = "chat-message message";
+  card.setAttribute("data-message-id", "m-grows");
+  logEl.append(card);
+  await new Promise(r => setTimeout(r, 60));
+  assert.strictEqual(scroll.scrollTop, 29000, "the arriving card was scrolled to");
+
+  // Now the images land and the card becomes 400 px taller.
+  geometry(scroll, 29400, 728);
+  fireResize();
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(scroll.scrollTop, 29400,
+    "and the log followed the card when it grew — the v0.1.8 failure");
+}
+globalThis.MobileSimplePlay.unmount();
+ok(25, "a card that grows after arriving is still the one on screen");
+
+// 26. Sticking is a state the PLAYER controls. Scrolling up to read back must
+//     not be undone by the next roll; coming back to the bottom resumes it.
+//     A chat that yanks you downwards mid-sentence is worse than one that
+//     stands still.
+globalThis.MobileSimplePlay.mount();
+{
+  const scroll = document.querySelector("#chat .chat-scroll");
+  const logEl = document.querySelector("#chat .chat-log");
+  await new Promise(r => setTimeout(r, 2100));
+  geometry(scroll, 29000, 728);
+
+  // The player scrolls up to re-read something.
+  scroll.scrollTop = 5000;
+  scroll.dispatchEvent(new dom.window.Event("scroll"));
+
+  const card = document.createElement("li");
+  card.className = "chat-message message";
+  card.setAttribute("data-message-id", "m-while-reading");
+  logEl.append(card);
+  await new Promise(r => setTimeout(r, 60));
+  assert.strictEqual(scroll.scrollTop, 5000, "a new card did not drag the reader away");
+
+  // They scroll back down; sticking resumes.
+  scroll.scrollTop = 29000;
+  scroll.dispatchEvent(new dom.window.Event("scroll"));
+  geometry(scroll, 29500, 728);
+  fireResize();
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(scroll.scrollTop, 29500, "and back at the bottom it sticks again");
+}
+globalThis.MobileSimplePlay.unmount();
+ok(26, "reading back is respected, and returning to the bottom resumes sticking");
+
+// 27. Foundry re-renders the log part on some state changes, replacing the
+//     whole <ol>. An observer bound to the old element then sits on a detached
+//     node, silently doing nothing for the rest of the session — a failure that
+//     looks exactly like the bug above and would have been indistinguishable
+//     from it in the field.
+globalThis.MobileSimplePlay.mount();
+{
+  const chat = document.querySelector("#chat");
+  const scroll = chat.querySelector(".chat-scroll");
+  await new Promise(r => setTimeout(r, 2100));
+  scroll.querySelector(".chat-log").remove();
+  const fresh = document.createElement("ol");
+  fresh.className = "chat-log";
+  scroll.append(fresh);
+  await new Promise(r => setTimeout(r, 20));
+
+  geometry(scroll, 12000, 728);
+  scroll.scrollTop = 0;
+  const card = document.createElement("li");
+  card.className = "chat-message message";
+  card.setAttribute("data-message-id", "m-after-rerender");
+  fresh.append(card);
+  await new Promise(r => setTimeout(r, 60));
+  assert.strictEqual(scroll.scrollTop, 12000, "a rebuilt log is still watched");
+}
+globalThis.MobileSimplePlay.unmount();
+ok(27, "replacing the log element does not silently kill live scrolling");
+
+// 28. Teardown must leave nothing running. A pinning loop that survives unmount
+//     would fight the desktop interface the player just went back to.
+globalThis.MobileSimplePlay.mount();
+globalThis.MobileSimplePlay.unmount();
+assert.strictEqual(resizeObservers.length, 0, "no ResizeObserver left observing");
+{
+  const scroll = document.querySelector("#chat .chat-scroll");
+  geometry(scroll, 9000, 728);
+  scroll.scrollTop = 111;
+  document.querySelector("#chat .chat-log").append(document.createElement("li"));
+  await new Promise(r => setTimeout(r, 2200));   // longer than the retry ladder
+  assert.strictEqual(scroll.scrollTop, 111, "and nothing scrolled the log after unmount");
+}
+ok(28, "unmount stops the pinning entirely — no observers, no timers");
+
+console.log("\n=== 28/28 green ===");
