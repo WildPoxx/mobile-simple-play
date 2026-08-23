@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.13
+ * Mobile Simple Play — v0.1.14
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -29,7 +29,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.13";
+const VERSION = "0.1.14";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.

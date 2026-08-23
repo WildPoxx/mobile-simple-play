@@ -511,22 +511,40 @@ body.msp-on #msp-bar #msp-to-desktop img {
 body.msp-on #combat-dock {
   display: none !important;
 }
+
+/* THE CAUSE, named by the field log of 2026-08-23 (describeDock):
+       dock rect=0,0 0x0 · display=flex · parent=#ui-top
+   The dock lives INSIDE #ui-top — which mobile mode hides wholesale as
+   desktop furniture. A visible child of an invisible parent is 0x0. So on
+   the map tab #ui-top comes back as a ghost: itself displayed, every child
+   EXCEPT the dock hidden, no pointer events of its own. */
+body.msp-on[data-msp-tab="map"] #ui-top {
+  display: block !important;
+  pointer-events: none;
+}
+body.msp-on[data-msp-tab="map"] #ui-top > *:not(:has(#combat-dock)):not(#combat-dock) {
+  display: none !important;
+}
+
+/* Mario's placement call: the carousel sits at the BOTTOM of the map area,
+   just above our bar, where the layout has slack. */
 body.msp-on[data-msp-tab="map"] #combat-dock {
   display: flex !important;
   position: fixed !important;
   left: var(--msp-rail) !important;
   right: 0 !important;
-  top: 0 !important;
-  bottom: auto !important;
+  top: auto !important;
+  bottom: calc(var(--msp-bar) + var(--msp-gesture)) !important;
   transform: none !important;
   margin: 0 !important;
   width: auto !important;
   max-width: none !important;
-  max-height: 30vh;
+  max-height: 28vh;
   overflow-x: auto;
   overflow-y: hidden;
   z-index: 40;                    /* above the map (20), below dialogs (100) */
   -webkit-overflow-scrolling: touch;
+  pointer-events: auto;
 }
 /* The dock's own chrome is desktop furniture; the portraits are the point. */
 body.msp-on[data-msp-tab="map"] #combat-dock .window-header {
