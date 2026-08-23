@@ -1,12 +1,14 @@
 /**
- * Mobile Simple Play — v0.1.10
+ * Mobile Simple Play — v0.1.13
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
  *   THE MODULE IS BORN INERT. While the `enabled` setting is false — and it is
- *   false by default — it adds no DOM node, swaps no core class, patches no
- *   global and registers no listener. The only thing it does on load is declare
- *   three settings.
+ *   false by default — it swaps no core class, patches no global and registers
+ *   no listener. On load it declares its settings and adds exactly ONE element:
+ *   the view-toggle button on the left control column (D-TOGGLE-01) — a switch
+ *   that only existed after you flipped it would be no switch at all. That is
+ *   the single, deliberate exception, requested by Mario on 2026-08-23.
  *
  *   `enabled` is "client" scope: it lives in the localStorage of THAT browser.
  *   Turning it on from a phone changes nothing for the GM, for the other
@@ -27,7 +29,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.10";
+const VERSION = "0.1.13";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -1398,9 +1400,17 @@ async function disableAndReload() {
  */
 function injectViewToggle() {
   safe("view toggle", () => {
-    const menu = document.querySelector("#sidebar-tabs menu") ?? document.querySelector("#sidebar > nav.tabs menu");
-    if (!menu || menu.querySelector("#msp-to-mobile")) return;
-    menu.append(el("li", {},
+    if (document.querySelector("#msp-to-mobile")) return;
+    // Mario's layout puts the switch at the FOOT of the LEFT control column —
+    // on a phone or tablet, thumb and eye find the left rail first. v0.1.12
+    // put it on the right sidebar tab rail by mistake; the right rail remains
+    // only as the fallback for a world without scene controls (noCanvas).
+    const home = document.querySelector("#scene-controls-layers")
+      ?? document.querySelector("#scene-controls menu")
+      ?? document.querySelector("#sidebar-tabs menu")
+      ?? document.querySelector("#sidebar > nav.tabs menu");
+    if (!home) return;
+    home.append(el("li", {},
       el("button", {
         type: "button",
         id: "msp-to-mobile",
@@ -1490,6 +1500,7 @@ Hooks.once("ready", () => {
   safe("ready", async () => {
     // D-TOGGLE-01: the one element that exists while the module is off.
     injectViewToggle();
+    Hooks.on("renderSceneControls", injectViewToggle);
     Hooks.on("renderSidebar", injectViewToggle);
     if (setting("enabled") === true) mount();
     else await maybeAsk();

@@ -15,7 +15,7 @@ const MODULE = new URL("../scripts/mobile-simple-play.mjs", import.meta.url).pat
 
 const dom = new JSDOM(`<!doctype html><html><body class="game">
   <div id="interface">
-    <section id="ui-left"></section>
+    <section id="ui-left"><nav id="scene-controls"><menu id="scene-controls-layers"></menu></nav></section>
     <section id="ui-middle"><header id="ui-top"></header><footer id="ui-bottom"><aside id="hotbar"></aside></footer></section>
     <section id="ui-right">
       <div id="ui-right-column-1"></div>
@@ -647,22 +647,40 @@ ok(29, "Dice So Nice is quieted on mount, frozen cards freed, and restored on un
 //     an <img> per SVG file — the two icons declare CLASHING class names and
 //     may never share a DOM.
 {
-  const menu = document.querySelector("#sidebar-tabs menu");
-  Hooks.callAll("renderSidebar");
-  const btn = menu.querySelector("#msp-to-mobile");
-  assert.ok(btn, "the switch-to-mobile button is on the sidebar rail");
+  // v0.1.13: Mario's layout puts the switch at the FOOT of the LEFT control
+  // column, not on the right sidebar rail — on a phone, thumb and eye find
+  // the left rail first. The sidebar stays only as a noCanvas fallback.
+  const left = document.querySelector("#scene-controls-layers");
+  Hooks.callAll("renderSceneControls");
+  const btn = left.querySelector("#msp-to-mobile");
+  assert.ok(btn, "the switch-to-mobile button is on the LEFT control column");
   assert.ok(btn.querySelector("img[src*='icon-mob-view']"), "using Mario's SVG as an <img>");
+  Hooks.callAll("renderSceneControls");
   Hooks.callAll("renderSidebar");
-  Hooks.callAll("renderSidebar");
-  assert.strictEqual(menu.querySelectorAll("#msp-to-mobile").length, 1, "re-renders do not duplicate it");
+  assert.strictEqual(document.querySelectorAll("#msp-to-mobile").length, 1, "re-renders do not duplicate it");
+  assert.ok(!document.querySelector("#sidebar-tabs #msp-to-mobile"), "and nothing landed on the right rail");
+
+  // noCanvas fallback: with no left column, the sidebar rail hosts it.
+  {
+    const parked = document.querySelector("#scene-controls");
+    btn.parentElement.remove();
+    parked.remove();
+    Hooks.callAll("renderSidebar");
+    assert.ok(document.querySelector("#sidebar-tabs #msp-to-mobile"), "fallback: sidebar rail when there is no left column");
+    document.querySelector("#sidebar-tabs #msp-to-mobile").parentElement.remove();
+    document.querySelector("#ui-left").append(parked);
+    Hooks.callAll("renderSceneControls");
+  }
+  const btn2 = document.querySelector("#scene-controls-layers #msp-to-mobile");
+  assert.ok(btn2, "restored to the left column for the click test");
 
   await game.settings.set("mobile-simple-play", "enabled", false);
-  btn.dispatchEvent(new dom.window.Event("click"));
+  btn2.dispatchEvent(new dom.window.Event("click"));
   await new Promise(r => setTimeout(r, 10));
   assert.strictEqual(game.settings.get("mobile-simple-play", "enabled"), true, "one click turns mobile mode on");
   assert.ok(document.body.classList.contains("msp-on"), "and the mode actually mounted");
 }
-ok(30, "sidebar button switches to mobile view with one click, no duplicates");
+ok(30, "the LEFT-column button switches to mobile view; sidebar only as noCanvas fallback");
 
 // 31. D-TOGGLE-01, mobile half: the leftmost slot of the bottom bar goes back
 //     to the desktop with one tap.
