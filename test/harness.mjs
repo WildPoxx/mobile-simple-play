@@ -576,4 +576,43 @@ assert.strictEqual(resizeObservers.length, 0, "no ResizeObserver left observing"
 }
 ok(28, "unmount stops the pinning entirely — no observers, no timers");
 
-console.log("\n=== 28/28 green ===");
+// 29. Dice So Nice + the battery brake = invisible cards. DSN hides a roll
+//     card until its 3D dice finish, and animates them on the MAIN canvas
+//     ticker — the very ticker mobile mode stops to save battery. The field
+//     log of 2026-08-23 shows the result: card in the log, gap=0, display:none.
+//     Mobile mode must raise DSN's own valve (messageHookDisabled), free any
+//     card already frozen, and put everything back on unmount.
+{
+  globalThis.game.dice3d = { messageHookDisabled: false };
+  // a card DSN hid before mobile mode was turned on, waiting on a frozen throw
+  const stuck = document.createElement("li");
+  stuck.className = "chat-message message dsn-hide";
+  stuck.setAttribute("data-message-id", "m-frozen");
+  document.querySelector("#chat .chat-log").append(stuck);
+
+  globalThis.MobileSimplePlay.mount();
+  assert.strictEqual(game.dice3d.messageHookDisabled, true, "DSN is quieted while mobile mode is on");
+  assert.ok(!stuck.classList.contains("dsn-hide"), "and the frozen card was freed at mount");
+
+  // belt and braces: a card that still arrives hidden is freed by the observer
+  const late = document.createElement("li");
+  late.className = "chat-message message dsn-hide";
+  late.setAttribute("data-message-id", "m-late-hidden");
+  document.querySelector("#chat .chat-log").append(late);
+  await new Promise(r => setTimeout(r, 30));
+  assert.ok(!late.classList.contains("dsn-hide"), "a card arriving hidden is unhidden on arrival");
+
+  globalThis.MobileSimplePlay.unmount();
+  assert.strictEqual(game.dice3d.messageHookDisabled, false, "and unmount hands DSN back exactly as found");
+
+  // A user who had DSN's hook disabled for their own reasons keeps it disabled.
+  game.dice3d.messageHookDisabled = true;
+  globalThis.MobileSimplePlay.mount();
+  globalThis.MobileSimplePlay.unmount();
+  assert.strictEqual(game.dice3d.messageHookDisabled, true, "a pre-existing true survives the round trip");
+  delete globalThis.game.dice3d;
+  stuck.remove(); late.remove();
+}
+ok(29, "Dice So Nice is quieted on mount, frozen cards freed, and restored on unmount");
+
+console.log("\n=== 29/29 green ===");

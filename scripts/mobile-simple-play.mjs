@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.9
+ * Mobile Simple Play — v0.1.10
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -27,7 +27,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.9";
+const VERSION = "0.1.10";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -52,7 +52,7 @@ const RESOLUTION_KEYS = ["ERROR.RESOLUTION.Screen", "ERROR.RESOLUTION.Scale", "E
 const ui_ = {
   rail: null, bar: null, overlay: null, writeClose: null,
   hooks: [], capture: null, notify: null, logWatch: null, postOne: null,
-  stick: null
+  stick: null, dsn: null
 };
 
 /* -------------------------------------------------- */
@@ -893,6 +893,54 @@ function scrollChatToBottom(reason = "", { force = false } = {}) {
  * Watching the DOM removes the race: we react to the card ARRIVING, not to the
  * message being created.
  */
+/* -------------------------------------------------- */
+/*  Dice So Nice — the frozen-dice trap                */
+/* -------------------------------------------------- */
+
+/**
+ * FIELD BUG OF 2026-08-23, the second half of "the chat does not update".
+ *
+ * Dice So Nice hides every roll card (`dsn-hide` -> display:none !important)
+ * until its 3D dice finish rolling — and it drives that animation with the
+ * MAIN canvas ticker: `canvas.app.ticker.add(this.animateThrow)`. This module
+ * STOPS that ticker off the map tab, to save the phone's battery. Chain the
+ * three together and every roll made while mobile mode is on lands in the log
+ * fully rendered, scrolled to, counted by our own diagnostics (gap=0!) — and
+ * invisible, because DSN's hide never gets lifted by an animation that is
+ * frozen mid-air. Turning mobile mode off restarts the ticker, the dice land,
+ * and the card pops in: exactly the symptom reported from the field.
+ *
+ * DSN ships the correct valve itself: `game.dice3d.messageHookDisabled`. With
+ * it on, DSN neither hides nor animates (main.js checks it in all three
+ * paths). So: raise it on mount, restore the prior value on unmount, and free
+ * any card a frozen animation already left hidden. Scoped to THIS browser —
+ * everyone else's dice keep rolling in 3D, including this player's own when
+ * they go back to the desktop view.
+ */
+function muzzleDiceSoNice() {
+  safe("quiet Dice So Nice", () => {
+    const dice3d = game.dice3d;
+    if (!dice3d) return;
+    ui_.dsn = { prior: dice3d.messageHookDisabled === true };
+    dice3d.messageHookDisabled = true;
+    // Free any card DSN hid before we mounted and left waiting on a frozen throw.
+    let freed = 0;
+    for (const el of document.querySelectorAll("#chat .dsn-hide")) {
+      el.classList.remove("dsn-hide");
+      freed++;
+    }
+    diag(`Dice So Nice quieted (3D dice off while mobile mode is on)${freed ? ` · freed ${freed} hidden card(s)` : ""}`);
+  });
+}
+
+function unmuzzleDiceSoNice() {
+  safe("restore Dice So Nice", () => {
+    if (!ui_.dsn) return;
+    if (game.dice3d) game.dice3d.messageHookDisabled = ui_.dsn.prior;
+    ui_.dsn = null;
+  });
+}
+
 function watchChatLog() {
   if (ui_.stick) return;
   safe("watch chat log", () => {
@@ -951,7 +999,14 @@ function watchChatLog() {
       for (const r of records) {
         for (const n of r.addedNodes) {
           if (n.nodeType !== 1) continue;
-          if (n.matches?.("[data-message-id]")) cards++;
+          if (n.matches?.("[data-message-id]")) {
+            cards++;
+            // Belt and braces: messageHookDisabled should prevent this, but a
+            // card that arrives already hidden by DSN would be invisible with
+            // the animation ticker stopped. While mobile mode is on, no card
+            // stays hidden.
+            if (n.classList.contains("dsn-hide")) n.classList.remove("dsn-hide");
+          }
           if (n.matches?.(".chat-log") || n.querySelector?.(".chat-log")) bindLog();
         }
       }
@@ -1161,6 +1216,7 @@ function mount() {
   setTab("chat");
   reportForeignChrome();
   instrumentChat();
+  muzzleDiceSoNice();
   watchChatLog();
   diag("mounted", describeChat());
   scrollChatToBottom("mounted", { force: true });
@@ -1210,6 +1266,7 @@ function unmount() {
     for (const [hook, fn] of ui_.hooks) Hooks.off(hook, fn);
     ui_.hooks.length = 0;
     unwatchChatLog();
+    unmuzzleDiceSoNice();
     uninstrumentChat();
     restoreResolutionNotices();
     stopCapture();
