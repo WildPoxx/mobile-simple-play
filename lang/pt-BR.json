@@ -33,5 +33,7 @@
   "MSP.Log.Copied": "Log copiado para a área de transferência.",
   "MSP.Log.Failed": "Não consegui salvar o log automaticamente. Ele foi impresso no console.",
   "MSP.Settings.Capture.Name": "Capturar mensagens do console",
-  "MSP.Settings.Capture.Hint": "Registra avisos e erros para que Mais -> Salvar log de diagnóstico tenha o que escrever. Desligado por padrão: enquanto está ligado, as ferramentas do navegador atribuem a este módulo todos os avisos do jogo, o que atrapalha depurar os outros. Ligue só antes de reproduzir um problema."
+  "MSP.Settings.Capture.Hint": "Registra avisos e erros para que Mais -> Salvar log de diagnóstico tenha o que escrever. Desligado por padrão: enquanto está ligado, as ferramentas do navegador atribuem a este módulo todos os avisos do jogo, o que atrapalha depurar os outros. Ligue só antes de reproduzir um problema.",
+  "MSP.Toggle.ToMobile": "Mudar para a visão de celular",
+  "MSP.Toggle.ToDesktop": "Voltar à visão de desktop"
 }

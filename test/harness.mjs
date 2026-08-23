@@ -19,7 +19,7 @@ const dom = new JSDOM(`<!doctype html><html><body class="game">
     <section id="ui-middle"><header id="ui-top"></header><footer id="ui-bottom"><aside id="hotbar"></aside></footer></section>
     <section id="ui-right">
       <div id="ui-right-column-1"></div>
-      <aside id="sidebar"><nav class="tabs"></nav>
+      <aside id="sidebar"><nav class="tabs" id="sidebar-tabs"><menu></menu></nav>
         <div id="sidebar-content" class="active-chat">
           <section id="chat" class="tab sidebar-tab chat-sidebar active">
             <div class="chat-scroll"><ol class="chat-log"></ol></div>
@@ -140,6 +140,10 @@ globalThis.game = {
   system: { id: "swade", version: "6.0.4" },
   modules: [{ active: true }, { active: true }],
   macros: { get: id => macros.get(id) ?? null },
+  swade: {
+    rollItemMacro: name => calls.push(`rollItemMacro:${name}`),
+    rollSkillMacro: name => calls.push(`rollSkillMacro:${name}`)
+  },
   i18n: { localize: k => LANG[k] ?? k },
   user: {
     id: "u1",
@@ -264,9 +268,27 @@ ok(8, "three status badges: wounds, fatigue, bennies");
 itemSlots[0].dispatchEvent(new dom.window.Event("click"));
 skillSlots[0].dispatchEvent(new dom.window.Event("click"));
 await new Promise(r => setTimeout(r, 10));
-assert.ok(calls.some(c => c.startsWith("item.show:")));
-assert.ok(calls.some(c => c.startsWith("rollSkill:")));
-ok(9, "taps: weapon calls item.show(), skill calls rollSkill()");
+// v0.1.11: the rail must enter through the SAME door as the sheet and the
+// hotbar — game.swade.rollItemMacro — because that is the path swade-tools
+// intercepts to build the rich card. item.show() posted the item card and
+// demanded a second tap that fired the bare system roll (field, 2026-08-23).
+assert.ok(calls.some(c => c.startsWith("rollItemMacro:")), "weapon tap uses game.swade.rollItemMacro");
+assert.ok(calls.some(c => c.startsWith("rollSkillMacro:")), "skill tap uses game.swade.rollSkillMacro");
+assert.ok(!calls.some(c => c.startsWith("item.show:")), "and no longer posts the item card");
+
+// Without the SWADE macro API the old behaviour is the fallback.
+{
+  const savedSwade = game.swade;
+  delete game.swade;
+  calls.length = 0;
+  itemSlots[0].dispatchEvent(new dom.window.Event("click"));
+  skillSlots[0].dispatchEvent(new dom.window.Event("click"));
+  await new Promise(r => setTimeout(r, 10));
+  assert.ok(calls.some(c => c.startsWith("item.show:")), "fallback: item.show()");
+  assert.ok(calls.some(c => c.startsWith("rollSkill:")), "fallback: actor.rollSkill()");
+  game.swade = savedSwade;
+}
+ok(9, "taps go through game.swade.roll*Macro — the sheet's own door — with the old path as fallback");
 
 document.getElementById("msp-pc").dispatchEvent(new dom.window.Event("click"));
 await new Promise(r => setTimeout(r, 10));
@@ -615,4 +637,41 @@ ok(28, "unmount stops the pinning entirely — no observers, no timers");
 }
 ok(29, "Dice So Nice is quieted on mount, frozen cards freed, and restored on unmount");
 
-console.log("\n=== 29/29 green ===");
+// 30. D-TOGGLE-01, desktop half: one click on the sidebar rail turns mobile
+//     mode on. The button is the single element allowed to exist while the
+//     module is off, survives sidebar re-renders without duplicating, and is
+//     an <img> per SVG file — the two icons declare CLASHING class names and
+//     may never share a DOM.
+{
+  const menu = document.querySelector("#sidebar-tabs menu");
+  Hooks.callAll("renderSidebar");
+  const btn = menu.querySelector("#msp-to-mobile");
+  assert.ok(btn, "the switch-to-mobile button is on the sidebar rail");
+  assert.ok(btn.querySelector("img[src*='icon-mob-view']"), "using Mario's SVG as an <img>");
+  Hooks.callAll("renderSidebar");
+  Hooks.callAll("renderSidebar");
+  assert.strictEqual(menu.querySelectorAll("#msp-to-mobile").length, 1, "re-renders do not duplicate it");
+
+  await game.settings.set("mobile-simple-play", "enabled", false);
+  btn.dispatchEvent(new dom.window.Event("click"));
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(game.settings.get("mobile-simple-play", "enabled"), true, "one click turns mobile mode on");
+  assert.ok(document.body.classList.contains("msp-on"), "and the mode actually mounted");
+}
+ok(30, "sidebar button switches to mobile view with one click, no duplicates");
+
+// 31. D-TOGGLE-01, mobile half: the leftmost slot of the bottom bar goes back
+//     to the desktop with one tap.
+{
+  const back = document.querySelector("#msp-bar #msp-to-desktop");
+  assert.ok(back, "the back-to-desktop button exists on the bar");
+  assert.strictEqual(document.querySelector("#msp-bar").firstElementChild, back, "and it is the leftmost slot");
+  assert.ok(back.querySelector("img[src*='icon-desktop-view']"), "using Mario's SVG");
+  back.dispatchEvent(new dom.window.Event("click"));
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(game.settings.get("mobile-simple-play", "enabled"), false, "one tap turns mobile mode off");
+  assert.ok(!document.body.classList.contains("msp-on"), "and the desktop view is back");
+}
+ok(31, "bar button returns to desktop view with one tap");
+
+console.log("\n=== 31/31 green ===");

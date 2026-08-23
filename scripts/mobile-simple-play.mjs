@@ -467,6 +467,39 @@ function railButton({ img, label, cls, icon, onClick }) {
   return btn;
 }
 
+/* -------------------------------------------------- */
+/*  Rolling the way the sheet does                     */
+/* -------------------------------------------------- */
+
+/**
+ * FIELD FINDING OF 2026-08-23 (the card-fidelity round).
+ *
+ * The rich chat card this table lives on — dice tray, reroll and Benny
+ * buttons, the whole targeted-damage chain — is NOT the raw SWADE card. It is
+ * manufactured by swade-tools, which intercepts the roll made from the sheet.
+ * The hotbar macro reaches the same factory with one line:
+ *
+ *     game.swade.rollItemMacro("Espada curta de Bronze");
+ *
+ * Until v0.1.10 the rail called `item.show()` instead: that posts the ITEM
+ * card, demands a second tap, and that second tap fires the system's bare
+ * roll — under the interceptor. Working, but a poorer card and one tap too
+ * many. So the rail now enters through the same door as the sheet and the
+ * hotbar. The old behaviour stays as the fallback for a world without the
+ * SWADE macro API.
+ */
+function rollItemLikeTheSheet(item) {
+  const viaMacro = game.swade?.rollItemMacro;
+  if (typeof viaMacro === "function") return void viaMacro(item.name);
+  item.show?.();
+}
+
+function rollSkillLikeTheSheet(actor, skill) {
+  const viaMacro = game.swade?.rollSkillMacro;
+  if (typeof viaMacro === "function") return void viaMacro(skill.name);
+  actor.rollSkill?.(skill.id, {});
+}
+
 function buildRail() {
   const actor = myActor();
   const rail = el("nav", { id: "msp-rail", "aria-label": t("MSP.Rail.Label", "Actions") });
@@ -484,7 +517,7 @@ function buildRail() {
       img: item.img,
       label: item.name,
       cls: "msp-item",
-      onClick: () => item.show?.()
+      onClick: () => rollItemLikeTheSheet(item)
     }));
   }
 
@@ -496,7 +529,7 @@ function buildRail() {
       img: skill.img,
       label: skill.name,
       cls: "msp-skill",
-      onClick: () => actor.rollSkill?.(skill.id, {})
+      onClick: () => rollSkillLikeTheSheet(actor, skill)
     }));
   }
 
@@ -692,6 +725,14 @@ function tabButton(tab, icon, label) {
 
 function buildBar() {
   const bar = el("nav", { id: "msp-bar", "aria-label": t("MSP.Bar.Label", "Navigation") });
+
+  // D-TOGGLE-01: back to the desktop, one tap, leftmost slot.
+  bar.append(el("button", {
+    type: "button",
+    id: "msp-to-desktop",
+    "aria-label": t("MSP.Toggle.ToDesktop", "Back to desktop view"),
+    onclick: () => safe("back to desktop", () => disableAndReload())
+  }, el("img", { src: `modules/${MOD}/icons/icon-desktop-view-mld.svg`, alt: "" })));
 
   bar.append(tabButton("chat", "fa-solid fa-comments", t("MSP.Tab.Chat", "Chat")));
   if (safe("is the canvas on?", () => !game.settings.get("core", "noCanvas")) ?? false) {
@@ -1287,6 +1328,34 @@ async function disableAndReload() {
  * so a player who turns the mode off would otherwise have no way back in.
  * "Don't ask on this device" is the escape hatch for anyone who finds it noisy.
  */
+/**
+ * D-TOGGLE-01 — the other half: a button on Foundry's own sidebar tab rail
+ * that turns mobile mode on with one click.
+ *
+ * DELIBERATE AMENDMENT to the born-inert principle, requested by Mario on
+ * 2026-08-23: while `enabled` is false the module still adds exactly ONE
+ * element — this button — because a switch that only exists after you flip it
+ * is no switch at all. Everything else remains inert. The button lives inside
+ * `#sidebar-tabs`, which Foundry re-renders freely, so it is re-injected on
+ * every `renderSidebar`; the id check keeps it single. In mobile mode the
+ * whole tab rail is hidden by our CSS, so the button needs no special casing.
+ */
+function injectViewToggle() {
+  safe("view toggle", () => {
+    const menu = document.querySelector("#sidebar-tabs menu") ?? document.querySelector("#sidebar > nav.tabs menu");
+    if (!menu || menu.querySelector("#msp-to-mobile")) return;
+    menu.append(el("li", {},
+      el("button", {
+        type: "button",
+        id: "msp-to-mobile",
+        class: "ui-control plain icon",
+        "aria-label": t("MSP.Toggle.ToMobile", "Switch to mobile view"),
+        onclick: () => safe("turn mobile mode on", () => game.settings.set(MOD, "enabled", true))
+      }, el("img", { src: `modules/${MOD}/icons/icon-mob-view-mld.svg`, alt: "" }))
+    ));
+  });
+}
+
 async function maybeAsk() {
   if (setting("dismissed") === true) return;
   if (!isTouch()) return;
@@ -1363,6 +1432,9 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", () => {
   safe("ready", async () => {
+    // D-TOGGLE-01: the one element that exists while the module is off.
+    injectViewToggle();
+    Hooks.on("renderSidebar", injectViewToggle);
     if (setting("enabled") === true) mount();
     else await maybeAsk();
   });
