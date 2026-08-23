@@ -184,7 +184,30 @@ globalThis.canvas = {
   app: { ticker: { start: () => calls.push("ticker.start"), stop: () => calls.push("ticker.stop") } },
   grid: { size: 150 },
   tokens: { placeables: [] },
-  animatePan(v) { calls.push(`pan:${Math.round(v.x)},${Math.round(v.y)}@${v.scale.toFixed(2)}`); }
+  stage: { pivot: { x: 1000, y: 1000 }, scale: { x: 1 } },
+  animatePan(v) { calls.push(`pan:${Math.round(v.x)},${Math.round(v.y)}@${v.scale.toFixed(2)}`); },
+  // the real Canvas#pan moves the camera; the mock records AND applies it, so
+  // a gesture's successive frames compose exactly as they do in the browser
+  pan(v) {
+    if (v.x !== undefined) canvas.stage.pivot.x = v.x;
+    if (v.y !== undefined) canvas.stage.pivot.y = v.y;
+    if (v.scale !== undefined) canvas.stage.scale.x = v.scale;
+    calls.push(`pan:${Math.round(canvas.stage.pivot.x)},${Math.round(canvas.stage.pivot.y)}@${canvas.stage.scale.x.toFixed(2)}`);
+  }
+};
+
+/* A board with a real size, and pointer events jsdom does not provide. */
+const BOARD_RECT = { left: 0, top: 0, width: 360, height: 640 };
+const givePointerEvents = board => {
+  board.getBoundingClientRect = () => ({
+    ...BOARD_RECT, right: BOARD_RECT.width, bottom: BOARD_RECT.height, x: 0, y: 0
+  });
+};
+const pointer = (board, type, id, x, y) => {
+  const ev = new dom.window.Event(type, { bubbles: true, cancelable: true });
+  Object.assign(ev, { pointerId: id, clientX: x, clientY: y });
+  board.dispatchEvent(ev);
+  return ev;
 };
 
 globalThis.ui = {
@@ -720,4 +743,72 @@ ok(31, "bar button returns to desktop view with one tap");
 }
 ok(32, "the map tab opens centred on the player's token at the reference framing");
 
-console.log("\n=== 32/32 green ===");
+// 33. D-CANVAS-03: one finger pans. The map must travel WITH the finger —
+//     drag right, the map comes right — and by the exact screen distance
+//     dragged, converted to world units by the current scale.
+{
+  const board = document.querySelector("#board");
+  givePointerEvents(board);
+  globalThis.MobileSimplePlay.mount();
+  canvas.stage.pivot = { x: 1000, y: 1000 };
+  canvas.stage.scale = { x: 1 };
+
+  pointer(board, "pointerdown", 1, 180, 320);      // centre of the board
+  pointer(board, "pointermove", 1, 183, 322);      // inside the slop: ignored
+  assert.strictEqual(canvas.stage.pivot.x, 1000, "a twitch below the slop does not pan");
+
+  pointer(board, "pointermove", 1, 280, 320);      // 100px right of the start
+  assert.strictEqual(Math.round(canvas.stage.pivot.x), 900,
+    "dragging right by 100px moves the camera 100 world units LEFT — the map follows the finger");
+  assert.strictEqual(Math.round(canvas.stage.pivot.y), 1000, "and the other axis is untouched");
+  pointer(board, "pointerup", 1, 280, 320);
+}
+ok(33, "one finger pans, and only after the slop threshold");
+
+// 34. Two fingers pinch — ANCHORED. The point of the map between the fingers
+//     must stay between the fingers while the scale changes; that is the
+//     difference between a pinch that feels right and one that feels sick.
+{
+  const board = document.querySelector("#board");
+  canvas.stage.pivot = { x: 1000, y: 1000 };
+  canvas.stage.scale = { x: 1 };
+
+  // fingers 100px apart, centred on the board centre -> anchor is world 1000,1000
+  pointer(board, "pointerdown", 1, 130, 320);
+  pointer(board, "pointerdown", 2, 230, 320);
+  // spread to 200px apart, same midpoint: scale doubles, anchor holds
+  pointer(board, "pointermove", 1, 80, 320);
+  pointer(board, "pointermove", 2, 280, 320);
+
+  assert.strictEqual(canvas.stage.scale.x, 2, "spreading the fingers to twice the gap doubles the scale");
+  assert.strictEqual(Math.round(canvas.stage.pivot.x), 1000, "and the anchored point of the map did not slide");
+  assert.strictEqual(Math.round(canvas.stage.pivot.y), 1000);
+  pointer(board, "pointerup", 1, 80, 320);
+  pointer(board, "pointerup", 2, 280, 320);
+}
+ok(34, "two fingers pinch to zoom, anchored between the fingers");
+
+// 35. The zoom clamp, and a clean teardown. A gesture surviving unmount would
+//     drive the camera of the desktop view the player just went back to.
+{
+  const board = document.querySelector("#board");
+  canvas.stage.pivot = { x: 1000, y: 1000 };
+  canvas.stage.scale = { x: 1 };
+  pointer(board, "pointerdown", 1, 170, 320);
+  pointer(board, "pointerdown", 2, 190, 320);      // 20px apart
+  pointer(board, "pointermove", 1, 0, 320);
+  pointer(board, "pointermove", 2, 360, 320);      // 360px apart -> x18
+  assert.strictEqual(canvas.stage.scale.x, 3, "the zoom is clamped at the ceiling, not x18");
+  pointer(board, "pointerup", 1, 0, 320);
+  pointer(board, "pointerup", 2, 360, 320);
+
+  globalThis.MobileSimplePlay.unmount();
+  canvas.stage.pivot = { x: 500, y: 500 };
+  canvas.stage.scale = { x: 1 };
+  pointer(board, "pointerdown", 1, 180, 320);
+  pointer(board, "pointermove", 1, 300, 320);
+  assert.strictEqual(canvas.stage.pivot.x, 500, "after unmount the finger no longer drives the camera");
+}
+ok(35, "zoom stays within bounds, and unmount releases the canvas");
+
+console.log("\n=== 35/35 green ===");

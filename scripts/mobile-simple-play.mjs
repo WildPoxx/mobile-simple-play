@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.14
+ * Mobile Simple Play — v0.1.15
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -29,7 +29,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.14";
+const VERSION = "0.1.15";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -54,7 +54,7 @@ const RESOLUTION_KEYS = ["ERROR.RESOLUTION.Screen", "ERROR.RESOLUTION.Scale", "E
 const ui_ = {
   rail: null, bar: null, overlay: null, writeClose: null,
   hooks: [], capture: null, notify: null, logWatch: null, postOne: null,
-  stick: null, dsn: null
+  stick: null, dsn: null, gestures: null
 };
 
 /* -------------------------------------------------- */
@@ -706,6 +706,151 @@ function pinSidebar() {
  * The zoom is a FORMULA, not a magic number, so any phone gets the same
  * framing: scale = usable width / (2.5 * grid size), clamped to sanity.
  */
+/* -------------------------------------------------- */
+/*  Canvas gestures — the finger drives the camera     */
+/* -------------------------------------------------- */
+
+/**
+ * D-CANVAS-03 (2026-08-23). Until now the map tab framed the player's token
+ * and then froze: there was no way to look anywhere else. Foundry's canvas is
+ * driven by mouse verbs — right-drag to pan, wheel to zoom — and a phone has
+ * neither. Worse, a browser left to itself answers a two-finger pinch by
+ * zooming the PAGE, which on our fixed layout does nothing but blur it.
+ *
+ * So mobile mode drives the camera itself, with the two gestures everyone
+ * already knows:
+ *
+ *   one finger  drag   -> pan
+ *   two fingers pinch  -> zoom, ANCHORED between the fingers
+ *
+ * "Anchored" is what separates a good pinch from a nauseating one: the point
+ * of the map you pinched must stay under your fingers while the scale changes.
+ * The arithmetic is one screen->world conversion, and it is the same formula
+ * for both gestures — a one-finger drag is simply the case where scale does
+ * not change.
+ *
+ * SAFETY. The listeners sit on #board in the CAPTURE phase and stop
+ * propagation ONLY once a drag has passed the slop threshold. A tap therefore
+ * still reaches Foundry untouched, which keeps selecting and targeting a token
+ * working, and leaves the door open for the deeper work (dragging the token
+ * itself, with the movement ruler) without a rewrite.
+ */
+const GESTURE_SLOP = 6;      // px of travel before a touch counts as a drag
+const ZOOM_MIN = 0.15;
+const ZOOM_MAX = 3;
+
+/** The camera right now, in world coordinates. */
+function camera() {
+  return {
+    x: canvas?.stage?.pivot?.x ?? 0,
+    y: canvas?.stage?.pivot?.y ?? 0,
+    scale: canvas?.stage?.scale?.x ?? 1
+  };
+}
+
+/** Centre of the board element, in screen pixels. */
+function viewportCentre(board) {
+  const r = board.getBoundingClientRect();
+  return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+}
+
+/** Which point of the MAP sits under this screen pixel. */
+function screenToWorld(px, py, cam, vp) {
+  return {
+    x: cam.x + (px - vp.cx) / cam.scale,
+    y: cam.y + (py - vp.cy) / cam.scale
+  };
+}
+
+function enableCanvasGestures() {
+  if (ui_.gestures) return;
+  safe("canvas gestures", () => {
+    const board = document.querySelector("#board");
+    if (!board) return;
+
+    const pts = new Map();                 // live pointers, by id
+    let g = null;                          // the gesture in flight
+
+    const positions = () => [...pts.values()];
+    const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    /** Start (or restart) a gesture from whatever fingers are down now. */
+    const begin = () => {
+      const p = positions();
+      if (!p.length) { g = null; return; }
+      const cam = camera();
+      const vp = viewportCentre(board);
+      const mid = p.length >= 2 ? midpoint(p[0], p[1]) : p[0];
+      g = {
+        cam, vp, mid,
+        fingers: p.length,
+        dist: p.length >= 2 ? distance(p[0], p[1]) : 0,
+        anchor: screenToWorld(mid.x, mid.y, cam, vp),
+        moved: false
+      };
+    };
+
+    const onDown = ev => safe("gesture down", () => {
+      pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      begin();                             // a new finger re-bases the gesture
+    });
+
+    const onMove = ev => safe("gesture move", () => {
+      if (!pts.has(ev.pointerId) || !g) return;
+      pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      const p = positions();
+      if (p.length !== g.fingers) { begin(); return; }
+
+      const mid = p.length >= 2 ? midpoint(p[0], p[1]) : p[0];
+
+      if (!g.moved) {
+        if (Math.hypot(mid.x - g.mid.x, mid.y - g.mid.y) < GESTURE_SLOP && p.length < 2) return;
+        g.moved = true;
+      }
+      // From here this is OUR gesture: Foundry must not also act on it.
+      ev.stopPropagation();
+      if (ev.cancelable) ev.preventDefault();
+
+      let scale = g.cam.scale;
+      if (p.length >= 2 && g.dist > 0) {
+        scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, g.cam.scale * (distance(p[0], p[1]) / g.dist)));
+      }
+      // Keep the anchored point of the map under the fingers.
+      const x = g.anchor.x - (mid.x - g.vp.cx) / scale;
+      const y = g.anchor.y - (mid.y - g.vp.cy) / scale;
+      canvas?.pan?.({ x, y, scale });
+    });
+
+    const onUp = ev => safe("gesture up", () => {
+      pts.delete(ev.pointerId);
+      if (!pts.size) {
+        if (g?.moved) diag("gesture end", `scale=${camera().scale.toFixed(2)}`);
+        g = null;
+      } else begin();
+    });
+
+    board.addEventListener("pointerdown", onDown, { capture: true });
+    board.addEventListener("pointermove", onMove, { capture: true, passive: false });
+    board.addEventListener("pointerup", onUp, { capture: true });
+    board.addEventListener("pointercancel", onUp, { capture: true });
+    ui_.gestures = { board, onDown, onMove, onUp };
+    pushLog("INFO ", ["canvas gestures on: one finger pans, two fingers pinch"]);
+  });
+}
+
+function disableCanvasGestures() {
+  safe("disable gestures", () => {
+    const gs = ui_.gestures;
+    if (!gs) return;
+    gs.board.removeEventListener("pointerdown", gs.onDown, { capture: true });
+    gs.board.removeEventListener("pointermove", gs.onMove, { capture: true });
+    gs.board.removeEventListener("pointerup", gs.onUp, { capture: true });
+    gs.board.removeEventListener("pointercancel", gs.onUp, { capture: true });
+    ui_.gestures = null;
+  });
+}
+
 const MAP_SQUARES_ACROSS = 2.5;
 
 function focusMyToken() {
@@ -1316,6 +1461,7 @@ function mount() {
   reportForeignChrome();
   instrumentChat();
   muzzleDiceSoNice();
+  enableCanvasGestures();
   watchChatLog();
   diag("mounted", describeChat());
   scrollChatToBottom("mounted", { force: true });
@@ -1365,6 +1511,7 @@ function unmount() {
     for (const [hook, fn] of ui_.hooks) Hooks.off(hook, fn);
     ui_.hooks.length = 0;
     unwatchChatLog();
+    disableCanvasGestures();
     unmuzzleDiceSoNice();
     uninstrumentChat();
     restoreResolutionNotices();

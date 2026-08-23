@@ -550,3 +550,15 @@ body.msp-on[data-msp-tab="map"] #combat-dock {
 body.msp-on[data-msp-tab="map"] #combat-dock .window-header {
   display: none !important;
 }
+
+
+/* -------------------------------------------------- */
+/*  D-CANVAS-03 — the finger belongs to the map        */
+/* -------------------------------------------------- */
+
+/* Without this the browser answers a pinch by zooming the PAGE, which on a
+   fixed layout only blurs it, and swallows the drag before our handlers see
+   it. `touch-action: none` hands both gestures to the canvas. */
+body.msp-on #board {
+  touch-action: none;
+}
