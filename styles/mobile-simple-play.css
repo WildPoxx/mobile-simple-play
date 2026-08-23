@@ -495,3 +495,40 @@ body.msp-on #msp-bar #msp-to-desktop img {
   height: 30px;
   display: block;
 }
+
+
+/* -------------------------------------------------- */
+/*  D-CANVAS-02 — the combat carousel lives on the map */
+/* -------------------------------------------------- */
+
+/* Mario's rule: chat is chat; combat is watched on the map. So the carousel
+   (combat-tracker-dock) is hidden everywhere in mobile mode EXCEPT the map
+   tab. And on the map tab it is RE-ANCHORED to the top of the map area with
+   !important, because the dock is a draggable window that remembers a desktop
+   position — an inline `left: 700px` from last week is invisible on a phone,
+   and !important in a stylesheet is the one thing that outranks an inline
+   style. Whatever hid it before, this places it. */
+body.msp-on #combat-dock {
+  display: none !important;
+}
+body.msp-on[data-msp-tab="map"] #combat-dock {
+  display: flex !important;
+  position: fixed !important;
+  left: var(--msp-rail) !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  max-height: 30vh;
+  overflow-x: auto;
+  overflow-y: hidden;
+  z-index: 40;                    /* above the map (20), below dialogs (100) */
+  -webkit-overflow-scrolling: touch;
+}
+/* The dock's own chrome is desktop furniture; the portraits are the point. */
+body.msp-on[data-msp-tab="map"] #combat-dock .window-header {
+  display: none !important;
+}

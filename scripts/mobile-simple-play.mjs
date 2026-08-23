@@ -694,6 +694,58 @@ function pinSidebar() {
   });
 }
 
+/**
+ * D-CANVAS-02 (2026-08-23): entering the map tab ALWAYS lands on the player's
+ * own token, framed the way Mario's reference capture frames it — the token
+ * about one grid square wide on screen, roughly 2.5 squares of world visible
+ * across the viewport. Positioning is the whole point of the mobile map
+ * (D-CANVAS-01), and positioning starts with "where am I?".
+ *
+ * The zoom is a FORMULA, not a magic number, so any phone gets the same
+ * framing: scale = usable width / (2.5 * grid size), clamped to sanity.
+ */
+const MAP_SQUARES_ACROSS = 2.5;
+
+function focusMyToken() {
+  safe("focus my token", () => {
+    if (!canvas?.ready) return;
+    const me = myActor();
+    const token = canvas.tokens?.placeables?.find(tk => tk.actor?.id === me?.id && !tk.document?.hidden)
+      ?? canvas.tokens?.placeables?.find(tk => tk.actor?.id === me?.id);
+    if (!token) return;
+    const grid = canvas.grid?.size || 150;
+    const rail = parseInt(safe("read rail width", () =>
+      window.getComputedStyle?.(document.body).getPropertyValue("--msp-rail")) ?? "") || 48;
+    const usable = Math.max(200, (window.innerWidth || 360) - rail);
+    const scale = Math.min(1.5, Math.max(0.4, usable / (MAP_SQUARES_ACROSS * grid)));
+    const { x, y } = token.center ?? { x: token.x, y: token.y };
+    (canvas.animatePan ?? canvas.pan)?.call(canvas, { x, y, scale });
+    diag(`map focus on ${token.name ?? me?.name ?? "?"}`, `x=${Math.round(x)} y=${Math.round(y)} scale=${scale.toFixed(2)}`);
+  });
+}
+
+/**
+ * The combat carousel (combat-tracker-dock) vanished in mobile mode, and the
+ * field could not yet say WHY — position saved for a desktop viewport, a
+ * transform, a z-order, all plausible. Two answers in one:
+ *  - the CSS re-anchors #combat-dock to the top of the map area with
+ *    !important (which outranks the inline left/top a drag leaves behind),
+ *    fixing every positional cause at once, and shows it ONLY on the map tab
+ *    — Mario's rule: chat is chat, combat lives on the map;
+ *  - this diagnostic photographs the dock so the next log names the cause.
+ */
+function describeDock() {
+  return safe("describe dock", () => {
+    const dock = document.querySelector("#combat-dock");
+    if (!dock) return "no #combat-dock in the DOM";
+    const r = dock.getBoundingClientRect();
+    const c = getComputedStyle(dock);
+    return `dock rect=${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`
+      + ` · display=${c.display} · vis=${c.visibility} · z=${c.zIndex} · parent=#${dock.parentElement?.id || dock.parentElement?.tagName}`
+      + ` · inline=${dock.getAttribute("style")?.slice(0, 120) ?? "-"}`;
+  }) ?? "describe dock failed";
+}
+
 function setTab(tab) {
   safe("switch tab", () => {
     document.body.dataset.mspTab = tab;
@@ -708,6 +760,10 @@ function setTab(tab) {
     });
     if (tab === "chat") { pinSidebar(); clearChatPip(); }
     else showChatForm(false);   // the writing field must not float over the map
+    if (tab === "map") {
+      focusMyToken();
+      diag("map tab", describeDock());
+    }
   });
 }
 

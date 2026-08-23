@@ -114,6 +114,7 @@ const items = [
 items.filter = Array.prototype.filter.bind(items);
 
 const actor = {
+  id: "a1",
   name: "Junior, Filho da Areia",
   img: "icons/junior.webp",
   items,
@@ -180,7 +181,10 @@ const LANG = {
 
 globalThis.canvas = {
   ready: false,
-  app: { ticker: { start: () => calls.push("ticker.start"), stop: () => calls.push("ticker.stop") } }
+  app: { ticker: { start: () => calls.push("ticker.start"), stop: () => calls.push("ticker.stop") } },
+  grid: { size: 150 },
+  tokens: { placeables: [] },
+  animatePan(v) { calls.push(`pan:${Math.round(v.x)},${Math.round(v.y)}@${v.scale.toFixed(2)}`); }
 };
 
 globalThis.ui = {
@@ -674,4 +678,28 @@ ok(30, "sidebar button switches to mobile view with one click, no duplicates");
 }
 ok(31, "bar button returns to desktop view with one tap");
 
-console.log("\n=== 31/31 green ===");
+// 32. D-CANVAS-02: entering the map tab lands on the player's own token,
+//     framed like Mario's reference capture — ~2.5 grid squares across, so
+//     the token reads at about one square wide. The zoom is a formula of the
+//     viewport, not a magic number.
+{
+  game.user.character = actor;   // check 22 nulled it and never gave it back
+  canvas.tokens.placeables = [
+    { name: "Sabotei", actor: { id: "someone-else" }, center: { x: 1, y: 1 }, document: {} },
+    { name: "Junior", actor: { id: "a1" }, center: { x: 1872, y: 1397 }, document: {} }
+  ];
+  globalThis.MobileSimplePlay.mount();
+  calls.length = 0;
+  document.querySelector('#msp-bar [data-msp-tab="map"]').dispatchEvent(new dom.window.Event("click"));
+  await new Promise(r => setTimeout(r, 10));
+  const pan = calls.find(c => c.startsWith("pan:"));
+  assert.ok(pan, "switching to the map pans the canvas");
+  assert.ok(pan.startsWith("pan:1872,1397@"), "to the PLAYER'S token, not the first token found");
+  const scale = parseFloat(pan.split("@")[1]);
+  assert.ok(scale >= 0.4 && scale <= 1.5, `scale ${scale} stays within the sane clamp`);
+  globalThis.MobileSimplePlay.unmount();
+  canvas.tokens.placeables = [];
+}
+ok(32, "the map tab opens centred on the player's token at the reference framing");
+
+console.log("\n=== 32/32 green ===");
