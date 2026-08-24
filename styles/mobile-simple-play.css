@@ -15,7 +15,7 @@ body.msp-on {
      viewport far wider than the hardware — Chrome's "Desktop site" being the
      usual cause. Every measurement below is a multiple of it, so the interface
      keeps its PHYSICAL size whatever the browser claims the width is. */
-  --msp-rail: calc(48px * var(--msp-scale, 1));
+  --msp-rail: calc(58px * var(--msp-scale, 1));
   --msp-bar: calc(64px * var(--msp-scale, 1));
   --msp-text: calc(16px * var(--msp-scale, 1));
   --msp-gesture: env(safe-area-inset-bottom, 0px);
@@ -247,12 +247,12 @@ body.msp-on .msp-rail-foot {
 
 body.msp-on .msp-slot {
   position: relative;
-  width: 44px;
-  height: 44px;
-  margin: 2px 0;
+  width: calc(48px * var(--msp-scale, 1));
+  height: calc(48px * var(--msp-scale, 1));
+  margin: calc(3px * var(--msp-scale, 1)) 0;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--msp-scale, 1));
   background: rgba(255, 255, 255, .04);
   color: var(--msp-ink);
   display: grid;
@@ -261,17 +261,17 @@ body.msp-on .msp-slot {
 }
 body.msp-on .msp-slot:active { background: rgba(201, 162, 39, .35); }
 body.msp-on .msp-slot img {
-  width: 36px; height: 36px;
+  width: calc(42px * var(--msp-scale, 1)); height: calc(42px * var(--msp-scale, 1));
   object-fit: cover;
   border: 0;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--msp-scale, 1));
 }
-body.msp-on .msp-slot i { font-size: calc(18px * var(--msp-scale, 1)); }
+body.msp-on .msp-slot i { font-size: calc(21px * var(--msp-scale, 1)); }
 body.msp-on .msp-target { border-color: var(--msp-accent); }
 
 body.msp-on .msp-div {
-  width: 32px;
-  margin: 4px 0;
+  width: calc(34px * var(--msp-scale, 1));
+  margin: calc(5px * var(--msp-scale, 1)) 0;
   border: 0;
   border-top: 1px solid var(--msp-line);
 }
@@ -279,11 +279,11 @@ body.msp-on .msp-div {
 /* Status badges — read-only. */
 body.msp-on .msp-status { display: flex; flex-direction: column; align-items: center; }
 body.msp-on .msp-badge {
-  width: 40px;
-  margin: 2px 0;
-  padding: 2px 0;
-  border-radius: 4px;
-  font-size: 11px;
+  width: calc(44px * var(--msp-scale, 1));
+  margin: calc(3px * var(--msp-scale, 1)) 0;
+  padding: calc(3px * var(--msp-scale, 1)) 0;
+  border-radius: calc(4px * var(--msp-scale, 1));
+  font-size: calc(12px * var(--msp-scale, 1));
   text-align: center;
   color: var(--msp-ink);
   background: rgba(255, 255, 255, .06);
@@ -302,9 +302,9 @@ body.msp-on .msp-tip {
   background: #000;
   color: var(--msp-ink);
   border: 1px solid var(--msp-line);
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 14px;
+  border-radius: calc(4px * var(--msp-scale, 1));
+  padding: calc(5px * var(--msp-scale, 1)) calc(9px * var(--msp-scale, 1));
+  font-size: calc(14px * var(--msp-scale, 1));
   z-index: 100;
   pointer-events: none;
 }
@@ -540,7 +540,7 @@ body.msp-on[data-msp-tab="map"] #combat-dock {
   left: var(--msp-rail) !important;
   right: 0 !important;
   top: auto !important;
-  bottom: calc(var(--msp-bar) + var(--msp-gesture)) !important;
+  bottom: calc(var(--msp-bar) + var(--msp-gesture) + 14px) !important;
   transform: none !important;
   margin: 0 !important;
   width: auto !important;
@@ -594,4 +594,31 @@ body.msp-on[data-msp-tab="map"] {
 body.msp-on[data-msp-tab="map"] #combat-dock .combat-dock {
   max-height: none;
   align-self: flex-start;
+}
+
+
+/* -------------------------------------------------- */
+/*  Card contents, sized for a hand not a desk         */
+/* -------------------------------------------------- */
+
+/* FIELD REPORT, 2026-08-23: "o conteúdo deles, principalmente a imagem, está
+   muito pequena". The card's own type came out fine once the base size scaled,
+   but everything the system draws at a FIXED pixel size stayed desk-sized:
+   the item icon, the timestamp, the small print. The header also ran away in
+   the other direction — the sender's name dwarfed the roll it belonged to.
+   These rules put the card back in proportion at any scale. */
+body.msp-on #chat .chat-message .message-content { line-height: 1.35; }
+body.msp-on #chat .chat-message .message-sender { font-size: calc(var(--msp-text) * 0.95); }
+body.msp-on #chat .chat-message .message-timestamp { font-size: calc(var(--msp-text) * 0.68); }
+
+/* Item icons — the weapon, the skill, the portrait beside a roll. */
+body.msp-on #chat .chat-message img:not(.card-face):not(.card-back) {
+  width: calc(34px * var(--msp-scale, 1)) !important;
+  height: calc(34px * var(--msp-scale, 1)) !important;
+  object-fit: cover;
+}
+/* An initiative card is meant to be READ: give it room. */
+body.msp-on #chat .chat-message .card-face {
+  width: calc(62px * var(--msp-scale, 1)) !important;
+  height: auto !important;
 }

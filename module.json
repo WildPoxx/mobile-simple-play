@@ -2,7 +2,7 @@
   "id": "mobile-simple-play",
   "title": "Mobile Simple Play",
   "description": "A phone interface for Foundry VTT, built around the chat. Made for the player who only has a phone. It does nothing until it is turned on, and it only turns on in the browser where the player turns it on.",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "compatibility": {
     "minimum": "14",
     "verified": "14.367"

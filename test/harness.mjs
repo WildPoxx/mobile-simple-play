@@ -255,7 +255,9 @@ assert.strictEqual(game.settings._defs.get("mobile-simple-play.enabled").scope, 
 assert.strictEqual(game.settings._defs.get("mobile-simple-play.enabled").default, false);
 assert.ok(game.settings._defs.has("mobile-simple-play.dismissed"));
 assert.ok(game.settings._defs.has("mobile-simple-play.capture"));
-ok(2, "init registers four settings; `enabled` is client scope and starts FALSE");
+assert.ok(game.settings._defs.has("mobile-simple-play.uiSize"));
+assert.strictEqual(game.settings._defs.get("mobile-simple-play.uiSize").scope, "client");
+ok(2, "init registers the settings; `enabled` is client scope and starts FALSE");
 
 assert.strictEqual(document.body.classList.contains("msp-on"), false);
 assert.strictEqual(document.getElementById("msp-rail"), null);
@@ -887,4 +889,83 @@ ok(36, "a drag from my own token belongs to the token, not the camera");
 }
 ok(37, "the interface keeps its physical size on a stretched viewport, and only there");
 
-console.log("\n=== 37/37 green ===");
+// 38. FIELD REPORT 2026-08-23: "os ícones da esquerda estão muito pequenos...
+//     tem um longo espaço vazio preto entre eles dois." The rail scaled and
+//     its BUTTONS did not — 44px slots adrift in a 100px rail. Every measure
+//     inside the rail must move with the scale, and the root font size must
+//     move too, because Foundry and SWADE size their own interface in `rem`.
+{
+  const setWidth = w => Object.defineProperty(dom.window, "innerWidth", { value: w, configurable: true });
+  setWidth(738);                                  // Mario's phone, as reported
+  const priorRootFont = document.documentElement.style.fontSize;
+  globalThis.MobileSimplePlay.mount();
+
+  const scale = parseFloat(document.documentElement.style.getPropertyValue("--msp-scale"));
+  assert.ok(scale > 1.5, `a 738px viewport scales up (got ${scale})`);
+  assert.strictEqual(document.documentElement.style.getPropertyValue("--msp-scale"),
+    document.body.style.getPropertyValue("--msp-scale"),
+    "the scale is published on the root as well as the body — `rem` resolves against the root");
+  assert.strictEqual(document.documentElement.style.fontSize, `${(16 * scale).toFixed(1)}px`,
+    "and the root font size carries Foundry's and SWADE's own rem-based layout with it");
+
+  globalThis.MobileSimplePlay.unmount();
+  assert.strictEqual(document.documentElement.style.fontSize, priorRootFont,
+    "unmount hands the document's font size back exactly as found");
+  assert.strictEqual(document.documentElement.style.getPropertyValue("--msp-scale"), "",
+    "and takes its variable off the root");
+  setWidth(412);
+}
+ok(38, "the whole interface scales, root font included, and unmount restores it");
+
+// 39. The player's thumb overrules the measurement. A taste setting multiplies
+//     whatever the automatic reading was — Mario asked for bigger; someone
+//     else's eyes will ask for smaller — and it is stored per browser.
+{
+  const setWidth = w => Object.defineProperty(dom.window, "innerWidth", { value: w, configurable: true });
+  setWidth(412);                                  // natural phone: auto scale is 1
+  await game.settings.set("mobile-simple-play", "uiSize", 1.5);
+  globalThis.MobileSimplePlay.mount();
+  assert.strictEqual(document.body.style.getPropertyValue("--msp-scale"), "1.5",
+    "on a natural phone the taste setting IS the scale");
+  await game.settings.set("mobile-simple-play", "uiSize", 0.8);
+  assert.strictEqual(document.body.style.getPropertyValue("--msp-scale"), "0.8",
+    "and changing it re-applies live, without a reload");
+  globalThis.MobileSimplePlay.unmount();
+  await game.settings.set("mobile-simple-play", "uiSize", 1);
+}
+ok(39, "the interface-size setting multiplies the automatic scale, live");
+
+// 40. The map framing must reckon in PHYSICAL width. On a stretched viewport
+//     the window reports more pixels than the glass has; framing by the
+//     inflated number zoomed the map far past Mario's reference capture.
+{
+  const setWidth = w => Object.defineProperty(dom.window, "innerWidth", { value: w, configurable: true });
+  canvas.tokens.placeables = [
+    { name: "Junior", actor: { id: "a1", isOwner: true }, x: 1822, y: 1347, w: 100, h: 100,
+      center: { x: 1872, y: 1397 }, document: {} }
+  ];
+
+  setWidth(412);                                  // natural phone
+  globalThis.MobileSimplePlay.mount();
+  calls.length = 0;
+  document.querySelector('#msp-bar [data-msp-tab="map"]').dispatchEvent(new dom.window.Event("click"));
+  await new Promise(r => setTimeout(r, 10));
+  const natural = parseFloat(calls.find(c => c.startsWith("pan:")).split("@")[1]);
+  globalThis.MobileSimplePlay.unmount();
+
+  setWidth(980);                                  // same glass, stretched viewport
+  globalThis.MobileSimplePlay.mount();
+  calls.length = 0;
+  document.querySelector('#msp-bar [data-msp-tab="map"]').dispatchEvent(new dom.window.Event("click"));
+  await new Promise(r => setTimeout(r, 10));
+  const stretched = parseFloat(calls.find(c => c.startsWith("pan:")).split("@")[1]);
+  globalThis.MobileSimplePlay.unmount();
+
+  assert.ok(Math.abs(natural - stretched) < 0.15,
+    `the same phone gets the same framing either way (${natural} vs ${stretched})`);
+  setWidth(412);
+  canvas.tokens.placeables = [];
+}
+ok(40, "the map is framed by the physical screen, not by the reported width");
+
+console.log("\n=== 40/40 green ===");

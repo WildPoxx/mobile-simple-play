@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.16
+ * Mobile Simple Play — v0.1.17
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -29,7 +29,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.16";
+const VERSION = "0.1.17";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -54,7 +54,7 @@ const RESOLUTION_KEYS = ["ERROR.RESOLUTION.Screen", "ERROR.RESOLUTION.Scale", "E
 const ui_ = {
   rail: null, bar: null, overlay: null, writeClose: null,
   hooks: [], capture: null, notify: null, logWatch: null, postOne: null,
-  stick: null, dsn: null, gestures: null
+  stick: null, dsn: null, gestures: null, rootFont: null
 };
 
 /* -------------------------------------------------- */
@@ -758,21 +758,45 @@ const NATURAL_MAX = 600;       // above this, a touch device is being stretched
 function deviceScale() {
   return safe("device scale", () => {
     const iw = window.innerWidth || REFERENCE_WIDTH;
-    if (!isTouch() || iw <= NATURAL_MAX) return 1;
-    return Math.min(3, Math.round((iw / REFERENCE_WIDTH) * 20) / 20);
+    const auto = (!isTouch() || iw <= NATURAL_MAX)
+      ? 1
+      : Math.min(3, Math.round((iw / REFERENCE_WIDTH) * 20) / 20);
+    // The player's own thumb is the final authority: a taste setting, stored
+    // per browser, multiplies whatever the automatic reading was. Mario asked
+    // for bigger; someone else's eyes will ask for smaller.
+    const taste = Number(setting("uiSize"));
+    return Math.min(4, Math.max(0.6, auto * (Number.isFinite(taste) && taste > 0 ? taste : 1)));
   }) ?? 1;
 }
 
 function applyDeviceScale() {
   safe("apply device scale", () => {
     const scale = deviceScale();
+    // On BOTH: the body for our own rules, the root because Foundry and SWADE
+    // size a great deal of their own interface in `rem` — which resolves
+    // against the root font size and nothing else. Moving that one number
+    // carries the system's whole layout with it, which is what "adjust to the
+    // screen" actually means.
+    document.documentElement.style.setProperty("--msp-scale", String(scale));
     document.body.style.setProperty("--msp-scale", String(scale));
+    if (!ui_.rootFont) ui_.rootFont = { prior: document.documentElement.style.fontSize || "" };
+    document.documentElement.style.fontSize = `${(16 * scale).toFixed(1)}px`;
     diag("viewport",
       `inner=${window.innerWidth}x${window.innerHeight}`,
       `dpr=${window.devicePixelRatio ?? "?"}`,
       `screen=${window.screen?.width ?? "?"}x${window.screen?.height ?? "?"}`,
       `touch=${isTouch()}`,
+      `uiSize=${setting("uiSize") ?? "-"}`,
       `--msp-scale=${scale}`);
+  });
+}
+
+function restoreDeviceScale() {
+  safe("restore device scale", () => {
+    document.documentElement.style.removeProperty("--msp-scale");
+    document.body.style.removeProperty("--msp-scale");
+    document.documentElement.style.fontSize = ui_.rootFont?.prior ?? "";
+    ui_.rootFont = null;
   });
 }
 
@@ -938,7 +962,10 @@ function focusMyToken() {
     const grid = canvas.grid?.size || 150;
     const rail = parseInt(safe("read rail width", () =>
       window.getComputedStyle?.(document.body).getPropertyValue("--msp-rail")) ?? "") || 48;
-    const usable = Math.max(200, (window.innerWidth || 360) - rail);
+    // Divide by the device scale: on a stretched viewport the window REPORTS
+    // more pixels than the glass has, and framing by the inflated number
+    // zoomed the map far past the reference capture.
+    const usable = Math.max(200, ((window.innerWidth || 360) - rail) / (deviceScale() || 1));
     const scale = Math.min(1.5, Math.max(0.4, usable / (MAP_SQUARES_ACROSS * grid)));
     const { x, y } = token.center ?? { x: token.x, y: token.y };
     (canvas.animatePan ?? canvas.pan)?.call(canvas, { x, y, scale });
@@ -1588,6 +1615,7 @@ function unmount() {
     for (const [hook, fn] of ui_.hooks) Hooks.off(hook, fn);
     ui_.hooks.length = 0;
     unwatchChatLog();
+    restoreDeviceScale();
     disableCanvasGestures();
     unmuzzleDiceSoNice();
     uninstrumentChat();
@@ -1686,6 +1714,20 @@ Hooks.once("init", () => {
       type: Boolean,
       default: false,
       onChange: (v) => safe("onChange enabled", () => (v ? mount() : unmount()))
+    });
+
+    game.settings.register(MOD, "uiSize", {
+      name: "MSP.Settings.UiSize.Name",
+      hint: "MSP.Settings.UiSize.Hint",
+      scope: "client",
+      config: true,
+      type: Number,
+      choices: { 0.8: "MSP.Settings.UiSize.Smaller", 1: "MSP.Settings.UiSize.Normal",
+                 1.25: "MSP.Settings.UiSize.Larger", 1.5: "MSP.Settings.UiSize.Largest" },
+      default: 1,
+      onChange: () => safe("onChange uiSize", () => {
+        if (document.body.classList.contains(BODY_CLASS)) applyDeviceScale();
+      })
     });
 
     game.settings.register(MOD, "skills", {
