@@ -7,7 +7,7 @@ through the browser on their phone. Every mobile VTT module starts from the map;
 one starts from the chat — because in Foundry the chat is not conversation, it is the
 ledger of the table. Whoever has the chat has the game.
 
-**Status: v0.1.18 — under test.** First run at a real table on 2026-08-22.
+**Status: v0.1.19 — under test.** First run at a real table on 2026-08-22.
 Verified against Foundry 14.367.
 
 ---

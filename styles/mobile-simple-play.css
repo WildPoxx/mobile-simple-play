@@ -338,7 +338,10 @@ body.msp-on #msp-bar button {
   display: grid;
   place-items: center;
 }
-body.msp-on #msp-bar button img {
+/* NOT #msp-pc: that button is a round portrait and fills itself. This rule
+   was overriding it (more elements in the selector beats fewer), which is why
+   Junior's face came out as a stamp in the middle of a big gold ring. */
+body.msp-on #msp-bar button:not(#msp-pc) img {
   width: calc(34px * var(--msp-scale, 1));
   height: calc(34px * var(--msp-scale, 1));
 }
@@ -459,7 +462,9 @@ body.msp-on .msp-more-list button {
   border-radius: calc(6px * var(--msp-scale, 1));
   background: rgba(255, 255, 255, .05);
   color: var(--msp-ink);
-  font-size: 16px;
+  font-size: var(--msp-text);   /* was a fixed 16px: the button grew with the
+                                   scale and its label did not. Caught by the
+                                   stylesheet check, not by eye. */
 }
 
 body.msp-on .msp-empty { text-align: center; opacity: .5; padding: 12px; }
@@ -543,7 +548,11 @@ body.msp-on[data-msp-tab="map"] #ui-top > *:not(:has(#combat-dock)):not(#combat-
 body.msp-on[data-msp-tab="map"] #combat-dock {
   display: flex !important;
   position: fixed !important;
-  left: var(--msp-rail) !important;
+  /* Mario, 2026-08-23: "se ele saísse da base esquerda mesmo, tomando toda a
+     base de baixo". The rail stops where the dock begins no longer: the strip
+     runs the full width, so the portraits have somewhere to go instead of
+     being clipped at both ends. */
+  left: 0 !important;
   right: 0 !important;
   top: auto !important;
   bottom: calc(var(--msp-bar) + var(--msp-gesture) + calc(30px * var(--msp-scale, 1))) !important;
@@ -607,7 +616,8 @@ body.msp-on[data-msp-tab="map"] #combat-dock .combat-dock {
   justify-content: flex-start !important;
   align-self: stretch;
   width: 100% !important;
-  padding-left: calc(4px * var(--msp-scale, 1));
+  padding-left: calc(6px * var(--msp-scale, 1));
+  padding-right: calc(6px * var(--msp-scale, 1));
 }
 /* The portraits were being cropped top and bottom: the strip was shorter than
    they are. Give it their full height plus breathing room. */
@@ -650,8 +660,129 @@ body.msp-on #chat .chat-log {
   max-width: min(100%, calc(430px * var(--msp-scale, 1)));
   margin-inline: auto;
 }
-body.msp-on #chat .chat-message .message-sender { font-size: calc(var(--msp-text) * 0.95); }
-body.msp-on #chat .chat-message .message-timestamp { font-size: calc(var(--msp-text) * 0.68); }
+/* -------------------------------------------------- */
+/*  D-TYPE-01 — a fixed type scale for the card        */
+/* -------------------------------------------------- */
+
+/* FIELD REPORT, 2026-08-23: "ele está bastante desorganizado na caixa de
+   texto, algumas fontes estão pequenas, outras estão maiores... essa
+   formatação parece obedecer a um design responsivo do navegador, e a gente
+   tem que explicar pro módulo que agora deve responder a um design fixo."
+
+   Exactly right, and the fault is structural on top of dimensional.
+
+   DIMENSIONAL: Foundry and SWADE size the card's parts in a dozen different
+   units — em on one node, px on another, rem on a third, and some that
+   inherit from a theme. On a desk they land near enough each other to read as
+   one design. Scaled onto a phone they fan out, which is the mess Mario sees.
+   The cure is not to chase each one: declare a single base, force EVERY
+   descendant to inherit it, then raise exactly the few that earn it.
+
+   STRUCTURAL: `span.flavor-text` — the "tries to Unshaken / Spirit /
+   Wounds: -1" context — lives INSIDE `header.message-header`, which Foundry
+   lays out as a `flexrow`. So the sender's name, the timestamp and three
+   stacked lines of context all fight for one narrow row. No font size fixes
+   that; the header has to become a column. */
+
+body.msp-on {
+  --msp-card: var(--msp-text);   /* the ONE size the card is built from */
+}
+
+/* Everything inherits. The `:not()`s keep the icon elements out — an <img> or
+   an <i> glyph sized by font-size would be resized by this rule too.
+
+   SPECIFICITY, deliberately kept low: each `:not()` ADDS weight, so an
+   exclusion list with class selectors in it (`:not(.fa)`) would out-rank the
+   very exceptions below that are supposed to override it — and !important on
+   both sides does not save them. Three element-level exclusions leave this at
+   (1,2,4); every exception below carries a class and beats it. */
+body.msp-on #chat .chat-message,
+body.msp-on #chat .chat-message *:not(img):not(svg):not(i) {
+  font-size: var(--msp-card) !important;
+}
+
+/* The deliberate exceptions. Each is a RATIO of the base, so the whole scale
+   still moves as one when the taste setting changes. */
+body.msp-on #chat .chat-message .message-sender {
+  font-size: calc(var(--msp-card) * 1.12) !important;
+  font-weight: 700;
+  line-height: 1.3 !important;
+}
+body.msp-on #chat .chat-message .flavor-text,
+body.msp-on #chat .chat-message .flavor-text * {
+  font-size: calc(var(--msp-card) * 0.84) !important;
+}
+body.msp-on #chat .chat-message .message-timestamp {
+  font-size: calc(var(--msp-card) * 0.74) !important;
+  opacity: 0.65;
+}
+/* The number you actually came to read. */
+body.msp-on #chat .chat-message .dice-total,
+body.msp-on #chat .chat-message .dice-total * {
+  font-size: calc(var(--msp-card) * 1.7) !important;
+  font-weight: 700;
+  line-height: 1.25 !important;
+}
+
+/* The header stops being a row: name on its own line, context under it, the
+   timestamp parked in the corner where it stays out of the way. */
+body.msp-on #chat .chat-message .message-header {
+  display: block !important;
+  position: relative;
+  padding-right: calc(64px * var(--msp-scale, 1));   /* the timestamp's berth */
+}
+body.msp-on #chat .chat-message .message-header .message-metadata {
+  position: absolute !important;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: calc(4px * var(--msp-scale, 1));
+  align-items: center;
+}
+body.msp-on #chat .chat-message .flavor-text {
+  display: block !important;
+  margin-top: calc(2px * var(--msp-scale, 1));
+  opacity: 0.85;
+  line-height: 1.45 !important;
+}
+/* SWADE writes the context as sibling <div>s, which stack into three lines and
+   push the card open. On a phone they read better as one flowing line. */
+body.msp-on #chat .chat-message .flavor-text > div {
+  display: inline;
+}
+body.msp-on #chat .chat-message .flavor-text > div:not(:last-child)::after {
+  content: " · ";
+  opacity: 0.55;
+}
+
+/* The roll body: one rhythm, not five. The formulas are code-ish and take the
+   smaller end of the scale so the totals stand out against them. */
+body.msp-on #chat .chat-message .dice-formula,
+body.msp-on #chat .chat-message .part-formula {
+  font-size: calc(var(--msp-card) * 0.82) !important;
+  opacity: 0.75;
+}
+body.msp-on #chat .chat-message .dice-flavor {
+  font-size: calc(var(--msp-card) * 0.86) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+/* The individual dice faces in the tray: sized in em against a parent we have
+   just normalised, so they need their own footing. */
+body.msp-on #chat .chat-message .dice-rolls li.roll {
+  font-size: calc(var(--msp-card) * 0.9) !important;
+  min-width: calc(26px * var(--msp-scale, 1));
+  line-height: calc(26px * var(--msp-scale, 1)) !important;
+}
+/* Buttons inside a card (reroll, Benny, damage) are touch targets first.
+   `.msp-on.msp-on` is not a typo: a bare element selector would sit UNDER the
+   blanket rule above, so the class is repeated to buy one point of weight. */
+body.msp-on.msp-on #chat .chat-message button {
+  font-size: calc(var(--msp-card) * 0.88) !important;
+  min-height: calc(34px * var(--msp-scale, 1));
+  padding: 0 calc(10px * var(--msp-scale, 1));
+}
 
 /* Item icons — the weapon, the skill, the portrait beside a roll. */
 body.msp-on #chat .chat-message img:not(.card-face):not(.card-back) {

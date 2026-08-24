@@ -10,6 +10,7 @@
 
 import { JSDOM } from "jsdom";
 import assert from "node:assert";
+import { readFileSync } from "node:fs";
 
 const MODULE = new URL("../scripts/mobile-simple-play.mjs", import.meta.url).pathname;
 
@@ -968,4 +969,46 @@ ok(39, "the interface-size setting multiplies the automatic scale, live");
 }
 ok(40, "the map is framed by the physical screen, not by the reported width");
 
-console.log("\n=== 40/40 green ===");
+// 41. The stylesheet has never been under test, and it is where the same two
+//     defects keep coming back: a size written in fixed pixels inside a
+//     container that scales, and a rule that loses to a broader rule because
+//     `:not(.class)` quietly out-weighs it. Both were found by eye, three
+//     times over. This reads the CSS as text and refuses either.
+{
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+
+  // (a) No font-size in bare px anywhere in mobile mode. Every size must be a
+  //     ratio of a variable, or the phone scale cannot move it.
+  const bareFont = [];
+  for (const m of css.matchAll(/font-size:\s*([^;]+);/g)) {
+    const value = m[1].replace(/!important/, "").trim();
+    if (/^-?[\d.]+px$/.test(value)) bareFont.push(value);
+  }
+  assert.deepStrictEqual(bareFont, [],
+    `font sizes must be ratios of a variable, never fixed px (found: ${bareFont.join(", ")})`);
+
+  // (b) The blanket inheritance rule must not carry a class inside :not().
+  //     `:not(.fa)` adds a class's worth of weight to a selector whose whole
+  //     job is to sit UNDERNEATH the exceptions; with !important on both
+  //     sides, the exceptions would then silently never apply.
+  const blanket = css.match(/\.chat-message \*:not\([^{,]*/);
+  assert.ok(blanket, "the card's blanket type rule is still present");
+  assert.ok(!/:not\(\s*[.#[]/.test(blanket[0]),
+    `the blanket rule's exclusions must be element-level only (found: ${blanket[0].trim()})`);
+
+  // (c) Every exception to it must actually out-rank it: a class selector, or
+  //     a doubled guard. A bare element (`button`) does not.
+  const weak = [];
+  for (const m of css.matchAll(/body\.msp-on(\.msp-on)? #chat \.chat-message ([^,{]+)/g)) {
+    const doubled = Boolean(m[1]);
+    const tail = m[2].trim();
+    if (tail.startsWith("*")) continue;                       // the blanket itself
+    if (doubled || /[.#[]/.test(tail)) continue;              // carries its own weight
+    weak.push(tail);
+  }
+  assert.deepStrictEqual(weak, [],
+    `these rules sit under the blanket and will never apply: ${weak.join(" | ")}`);
+}
+ok(41, "the stylesheet scales by ratio, and its exceptions out-rank the blanket");
+
+console.log("\n=== 41/41 green ===");
