@@ -10,8 +10,14 @@
  */
 
 body.msp-on {
-  --msp-rail: 48px;
-  --msp-bar: 64px;
+  /* --msp-scale is written by the script (see deviceScale()). It is 1 on a
+     phone in its natural viewport, and grows when the browser reports a
+     viewport far wider than the hardware — Chrome's "Desktop site" being the
+     usual cause. Every measurement below is a multiple of it, so the interface
+     keeps its PHYSICAL size whatever the browser claims the width is. */
+  --msp-rail: calc(48px * var(--msp-scale, 1));
+  --msp-bar: calc(64px * var(--msp-scale, 1));
+  --msp-text: calc(16px * var(--msp-scale, 1));
   --msp-gesture: env(safe-area-inset-bottom, 0px);
   --msp-ink: #e8e3d8;
   --msp-back: #16130f;
@@ -149,7 +155,7 @@ body.msp-on #chat .chat-log {
                                    frees it, this survives a theme that hardcodes */
   width: auto !important;
 }
-body.msp-on #chat .chat-message { font-size: 16px; }
+body.msp-on #chat .chat-message { font-size: var(--msp-text); }
 
 /* While the message field is open it floats over the log, so the log needs
    room to scroll past it. */
@@ -260,7 +266,7 @@ body.msp-on .msp-slot img {
   border: 0;
   border-radius: 4px;
 }
-body.msp-on .msp-slot i { font-size: 18px; }
+body.msp-on .msp-slot i { font-size: calc(18px * var(--msp-scale, 1)); }
 body.msp-on .msp-target { border-color: var(--msp-accent); }
 
 body.msp-on .msp-div {
@@ -561,4 +567,31 @@ body.msp-on[data-msp-tab="map"] #combat-dock .window-header {
    it. `touch-action: none` hands both gestures to the canvas. */
 body.msp-on #board {
   touch-action: none;
+}
+
+
+/* -------------------------------------------------- */
+/*  The carousel's zero-sized portraits                */
+/* -------------------------------------------------- */
+
+/* FIELD FINDING, 2026-08-23 (phone snapshot): the carousel was never hidden.
+   combat-tracker-dock sizes its portraits from the space it is given and
+   WRITES the result as an inline custom property on <html>:
+
+       --combatant-portrait-size: 0px
+
+   On the chat tab that space is zero — mobile mode hides #ui-top — so it
+   computed zero and froze there. Revealing the element afterwards changes
+   nothing: the portraits still have no height. Mario read the mechanism right
+   from the outside ("it is resizeable, it depends on the window").
+
+   Declaring the variable on BODY beats the inline value on HTML for every
+   descendant, because the nearer definition wins in the inheritance chain —
+   no !important needed, no fight with the module. */
+body.msp-on[data-msp-tab="map"] {
+  --combatant-portrait-size: calc(56px * var(--msp-scale, 1));
+}
+body.msp-on[data-msp-tab="map"] #combat-dock .combat-dock {
+  max-height: none;
+  align-self: flex-start;
 }

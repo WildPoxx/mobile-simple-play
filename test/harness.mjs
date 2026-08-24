@@ -811,4 +811,80 @@ ok(34, "two fingers pinch to zoom, anchored between the fingers");
 }
 ok(35, "zoom stays within bounds, and unmount releases the canvas");
 
-console.log("\n=== 35/35 green ===");
+// 36. FIELD REPORT 2026-08-23: a drag that starts ON the player's own token
+//     must move the TOKEN, not the camera. v0.1.15 claimed every one-finger
+//     drag for the camera, so touching your own token panned the map — the
+//     desktop equivalent of holding the right mouse button.
+{
+  const board = document.querySelector("#board");
+  canvas.stage.pivot = { x: 1000, y: 1000 };
+  canvas.stage.scale = { x: 1 };
+  // a token of MINE at world 1000,1000 (the board centre at this camera)
+  canvas.tokens.placeables = [
+    { name: "Junior", actor: { id: "a1", isOwner: true }, x: 950, y: 950, w: 100, h: 100,
+      center: { x: 1000, y: 1000 }, document: {} },
+    { name: "Soren", actor: { id: "npc", isOwner: false }, x: 1300, y: 950, w: 100, h: 100,
+      center: { x: 1350, y: 1000 }, document: {} }
+  ];
+  globalThis.MobileSimplePlay.mount();
+  canvas.stage.pivot = { x: 1000, y: 1000 };
+  canvas.stage.scale = { x: 1 };
+
+  // finger lands on MY token, then drags: the camera must not move
+  pointer(board, "pointerdown", 1, 180, 320);
+  pointer(board, "pointermove", 1, 280, 320);
+  assert.strictEqual(canvas.stage.pivot.x, 1000, "dragging from my own token leaves the camera alone");
+  pointer(board, "pointerup", 1, 280, 320);
+
+  // finger lands on empty map: pans as before
+  pointer(board, "pointerdown", 1, 60, 500);
+  pointer(board, "pointermove", 1, 160, 500);
+  assert.strictEqual(Math.round(canvas.stage.pivot.x), 900, "dragging from empty map still pans");
+  pointer(board, "pointerup", 1, 160, 500);
+
+  // a token I do NOT own is not mine to drag: panning from it is fine
+  canvas.stage.pivot = { x: 1000, y: 1000 };
+  pointer(board, "pointerdown", 1, 180, 320);   // recentred: 1000,1000 -> my token again
+  pointer(board, "pointerup", 1, 180, 320);
+  canvas.tokens.placeables[0].actor.isOwner = false;
+  pointer(board, "pointerdown", 1, 180, 320);
+  pointer(board, "pointermove", 1, 280, 320);
+  assert.strictEqual(Math.round(canvas.stage.pivot.x), 900, "a token I do not own does not block the pan");
+  pointer(board, "pointerup", 1, 280, 320);
+  globalThis.MobileSimplePlay.unmount();
+  canvas.tokens.placeables = [];
+}
+ok(36, "a drag from my own token belongs to the token, not the camera");
+
+// 37. D-SCALE-01: when the browser reports a viewport far wider than a phone
+//     naturally has (Chrome's "Desktop site"), every measurement scales up so
+//     the interface keeps its PHYSICAL size. A phone in its own viewport, and
+//     any non-touch device, must be left at exactly 1.
+{
+  const setWidth = w => Object.defineProperty(dom.window, "innerWidth", { value: w, configurable: true });
+
+  setWidth(412);                                  // a phone, natural
+  globalThis.MobileSimplePlay.mount();
+  assert.strictEqual(document.body.style.getPropertyValue("--msp-scale"), "1",
+    "a phone in its natural viewport is left exactly as designed");
+  globalThis.MobileSimplePlay.unmount();
+
+  setWidth(980);                                  // the same phone, "Desktop site"
+  globalThis.MobileSimplePlay.mount();
+  const s = parseFloat(document.body.style.getPropertyValue("--msp-scale"));
+  assert.ok(s > 2.3 && s < 2.5, `a stretched viewport scales up (got ${s})`);
+  globalThis.MobileSimplePlay.unmount();
+
+  // a wide viewport WITHOUT touch is a real desktop: never scale it
+  const coarse = window.matchMedia;
+  window.matchMedia = q => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} });
+  globalThis.MobileSimplePlay.mount();
+  assert.strictEqual(document.body.style.getPropertyValue("--msp-scale"), "1",
+    "a wide viewport with a mouse is a desktop, not a stretched phone");
+  globalThis.MobileSimplePlay.unmount();
+  window.matchMedia = coarse;
+  setWidth(412);
+}
+ok(37, "the interface keeps its physical size on a stretched viewport, and only there");
+
+console.log("\n=== 37/37 green ===");

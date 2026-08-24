@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.15
+ * Mobile Simple Play — v0.1.16
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -29,7 +29,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.15";
+const VERSION = "0.1.16";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -735,6 +735,47 @@ function pinSidebar() {
  * working, and leaves the door open for the deeper work (dragging the token
  * itself, with the movement ruler) without a rewrite.
  */
+/**
+ * D-SCALE-01 (2026-08-23). On Mario's phone the whole interface came out
+ * "tudo pequenininho" — the rail a sliver, the cards' type unreadable. The
+ * snapshot explains it: the browser reports a viewport far wider than a phone
+ * naturally has (a phone gives ~412 CSS px; the measurements pointed at
+ * 800-1200). Chrome's "Desktop site" is the usual cause, and the module cannot
+ * turn it off from inside.
+ *
+ * What it CAN do is stop trusting the CSS pixel. Every measurement in the
+ * stylesheet is a multiple of --msp-scale, and this function sets that scale
+ * to whatever keeps the interface the same PHYSICAL size it was designed to
+ * be. On a phone in its natural viewport the scale is exactly 1 and nothing
+ * changes; if Mario turns "Desktop site" off, it silently returns to 1.
+ *
+ * The guard on isTouch() matters: a real tablet or a desktop browser has a
+ * wide viewport AND a big screen, and must be left alone.
+ */
+const REFERENCE_WIDTH = 412;   // a typical phone, in its own viewport
+const NATURAL_MAX = 600;       // above this, a touch device is being stretched
+
+function deviceScale() {
+  return safe("device scale", () => {
+    const iw = window.innerWidth || REFERENCE_WIDTH;
+    if (!isTouch() || iw <= NATURAL_MAX) return 1;
+    return Math.min(3, Math.round((iw / REFERENCE_WIDTH) * 20) / 20);
+  }) ?? 1;
+}
+
+function applyDeviceScale() {
+  safe("apply device scale", () => {
+    const scale = deviceScale();
+    document.body.style.setProperty("--msp-scale", String(scale));
+    diag("viewport",
+      `inner=${window.innerWidth}x${window.innerHeight}`,
+      `dpr=${window.devicePixelRatio ?? "?"}`,
+      `screen=${window.screen?.width ?? "?"}x${window.screen?.height ?? "?"}`,
+      `touch=${isTouch()}`,
+      `--msp-scale=${scale}`);
+  });
+}
+
 const GESTURE_SLOP = 6;      // px of travel before a touch counts as a drag
 const ZOOM_MIN = 0.15;
 const ZOOM_MAX = 3;
@@ -791,13 +832,47 @@ function enableCanvasGestures() {
       };
     };
 
+    /**
+     * FIELD REPORT, 2026-08-23: "quando a gente clica no token e tenta mover
+     * pra um lado e pro outro, ele move a tela inteira."
+     *
+     * Exactly so — v0.1.15 claimed EVERY one-finger drag for the camera, the
+     * token underneath included. The cure is to ask, at the moment the finger
+     * lands, whether it landed on a token this player may move. If it did, the
+     * gesture is not ours: we stay out and Foundry drags the token, movement
+     * ruler and all. Two fingers still pinch, because a pinch is never a drag.
+     */
+    const myTokenAt = (px, py) => safe("token hit test", () => {
+      const cam = camera();
+      const w = screenToWorld(px, py, cam, viewportCentre(board));
+      return (canvas?.tokens?.placeables ?? []).find(tk => {
+        if (!(tk.actor?.isOwner ?? tk.isOwner ?? false)) return false;
+        const x = tk.x ?? tk.document?.x, y = tk.y ?? tk.document?.y;
+        const bw = tk.w ?? tk.width ?? 0, bh = tk.h ?? tk.height ?? 0;
+        if (x === undefined || !bw || !bh) return false;
+        return w.x >= x && w.x <= x + bw && w.y >= y && w.y <= y + bh;
+      }) ?? null;
+    }) ?? null;
+
     const onDown = ev => safe("gesture down", () => {
       pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
-      begin();                             // a new finger re-bases the gesture
+      if (pts.size === 1) {
+        const tk = myTokenAt(ev.clientX, ev.clientY);
+        if (tk) {                          // hands off: this drag moves a token
+          g = null;
+          ui_.gestures.yielded = true;
+          diag("gesture yielded to token", tk.name ?? "?");
+          return;
+        }
+        ui_.gestures.yielded = false;
+      }
+      // A second finger always means pinch, even over a token.
+      if (pts.size >= 2) ui_.gestures.yielded = false;
+      begin();
     });
 
     const onMove = ev => safe("gesture move", () => {
-      if (!pts.has(ev.pointerId) || !g) return;
+      if (!pts.has(ev.pointerId) || !g || ui_.gestures?.yielded) return;
       pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       const p = positions();
       if (p.length !== g.fingers) { begin(); return; }
@@ -830,11 +905,11 @@ function enableCanvasGestures() {
       } else begin();
     });
 
+    ui_.gestures = { board, onDown, onMove, onUp, yielded: false };
     board.addEventListener("pointerdown", onDown, { capture: true });
     board.addEventListener("pointermove", onMove, { capture: true, passive: false });
     board.addEventListener("pointerup", onUp, { capture: true });
     board.addEventListener("pointercancel", onUp, { capture: true });
-    ui_.gestures = { board, onDown, onMove, onUp };
     pushLog("INFO ", ["canvas gestures on: one finger pans, two fingers pinch"]);
   });
 }
@@ -908,6 +983,7 @@ function setTab(tab) {
     if (tab === "chat") { pinSidebar(); clearChatPip(); }
     else showChatForm(false);   // the writing field must not float over the map
     if (tab === "map") {
+      applyDeviceScale();        // a rotation may have changed the viewport
       focusMyToken();
       diag("map tab", describeDock());
     }
@@ -1459,6 +1535,7 @@ function mount() {
   document.body.append(ui_.rail, ui_.bar, ui_.writeClose);
   setTab("chat");
   reportForeignChrome();
+  applyDeviceScale();
   instrumentChat();
   muzzleDiceSoNice();
   enableCanvasGestures();
