@@ -7,7 +7,7 @@ through the browser on their phone. Every mobile VTT module starts from the map;
 one starts from the chat — because in Foundry the chat is not conversation, it is the
 ledger of the table. Whoever has the chat has the game.
 
-**Status: v0.1.21 — under test.** First run at a real table on 2026-08-22.
+**Status: v0.1.22 — under test.** First run at a real table on 2026-08-22.
 Verified against Foundry 14.367.
 
 ---
@@ -44,7 +44,7 @@ The player is the one who turns it on, **on their own device**:
 
 Mobile mode can be turned off in three ways, from the simplest to the most drastic:
 
-1. inside mobile mode, the **More → Turn off mobile mode** button;
+1. the leftmost button on the bottom bar — the screen icon — which is always on screen;
 2. **Game Settings → Configure Settings → Mobile Simple Play → Mobile mode**, unchecked;
 3. and, worst case, disable the module in **Manage Modules** — the world returns to
    normal, leaving nothing behind.
