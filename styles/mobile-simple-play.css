@@ -543,16 +543,48 @@ body.msp-on[data-msp-tab="map"] #ui-top > *:not(:has(#combat-dock)):not(#combat-
   display: none !important;
 }
 
+/* ---- D-CANVAS-04: the strip only ever had 60% of the screen -------------
+
+   MEASURED 2026-08-25 in a rebuilt copy of Mario's own world — the page and
+   every stylesheet taken from a real .mht capture, laid out in Chromium at
+   phone metrics. Mario: "ele corta no meio... deveria aparecer pelo menos
+   mais dois do lado". Two independent causes, neither of them ours.
+
+   ONE — Foundry core, foundry2.css:
+       #ui-middle { width: 60%; transform: scale(var(--ui-scale)); }
+   The dock lives inside that column, and #interface centres it. So a fifth of
+   the screen is dead on each side. Worse: ANY transform on an ancestor makes
+   that ancestor the containing block for `position: fixed` descendants. The
+   dock's `left: 0; right: 0` were therefore never measuring the screen — they
+   were measuring the middle 60%. Measured at 412px: the dock ran 82.4 -> 329.6
+   instead of 0 -> 412, and only 3 of 6 combatants had anywhere to be.
+
+   That also settles an old puzzle honestly. `position: fixed !important` did
+   place the dock, so the rule read as working. It was fixed to the wrong box,
+   and nothing in the stylesheet could have said so — only a measurement could.
+
+   The cure is to remove the trap instead of fighting it. On the map tab every
+   other child of #ui-middle is already hidden — #ui-bottom by our own rule,
+   every sibling of the dock inside #ui-top likewise — so widening the column
+   and dropping an identity scale costs nothing and moves nothing else.
+
+   TWO is one block further down, on #combatants. --------------------------- */
+body.msp-on[data-msp-tab="map"] #ui-middle {
+  width: 100% !important;
+  height: 100% !important;
+  transform: none !important;
+}
+
 /* Mario's placement call: the carousel sits at the BOTTOM of the map area,
    just above our bar, where the layout has slack. */
 body.msp-on[data-msp-tab="map"] #combat-dock {
   display: flex !important;
   position: fixed !important;
-  /* Mario, 2026-08-23: "se ele saísse da base esquerda mesmo, tomando toda a
-     base de baixo". The rail stops where the dock begins no longer: the strip
-     runs the full width, so the portraits have somewhere to go instead of
-     being clipped at both ends. */
-  left: 0 !important;
+  /* Mario, 2026-08-25: "trazer o dock mais pra esquerda, colando ali bem perto
+     do alvo, e estender ele o máximo até o lado direito". The target button is
+     the last one in our rail, so the strip begins where the rail ends — flush
+     against it, never under it — and runs to the edge of the screen. */
+  left: var(--msp-rail) !important;
   right: 0 !important;
   top: auto !important;
   bottom: calc(var(--msp-bar) + var(--msp-gesture) + calc(30px * var(--msp-scale, 1))) !important;
@@ -604,7 +636,11 @@ body.msp-on #board {
    descendant, because the nearer definition wins in the inheritance chain —
    no !important needed, no fight with the module. */
 body.msp-on[data-msp-tab="map"] {
-  --combatant-portrait-size: calc(56px * var(--msp-scale, 1));
+  /* 2026-08-25, measured: at 56 a phone fitted three combatants and clipped
+     the rest. Mario asked for "pelo menos mais dois" and allowed "reduzir um
+     pouco o tamanho". 46 is that reduction — it is a design number, not a
+     fitted one: below the low forties a portrait stops reading as a face. */
+  --combatant-portrait-size: calc(46px * var(--msp-scale, 1));
 }
 body.msp-on[data-msp-tab="map"] #combat-dock .combat-dock {
   max-height: none;
@@ -626,6 +662,37 @@ body.msp-on[data-msp-tab="map"] #combat-dock {
 }
 body.msp-on[data-msp-tab="map"] #combat-dock .combat-dock .combatant-portrait {
   margin: 0 calc(4px * var(--msp-scale, 1)) !important;
+}
+
+/* ---- D-CANVAS-04, cause TWO: the strip clipped instead of scrolling -------
+
+   The dock module writes its overflow as a setting, inline on <html>:
+       --carousel-overflow: hidden
+   and spends it here:
+       #combatants { overflow: var(--carousel-overflow) }
+
+   Our `overflow-x: auto` on the dock WINDOW cannot reach that. The clipping
+   happens one level in, on a child that is exactly as wide as its parent, so
+   the window never has anything to scroll — measured at 412px, #combatants
+   held 451px of portraits inside a 235px box and simply cut them off. The
+   sixth combatant was not off-screen. It was cut off inside a box that
+   refuses to move.
+
+   So the scroll goes on the element that actually clips. The scrollbar is
+   hidden because a thumb is desk furniture; on a phone the finger is the
+   scrollbar, and the whole strip is now reachable by dragging it. */
+body.msp-on[data-msp-tab="map"] #combat-dock #combatants {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  justify-content: flex-start;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding-left: calc(4px * var(--msp-scale, 1)) !important;
+  padding-right: calc(4px * var(--msp-scale, 1)) !important;
+}
+body.msp-on[data-msp-tab="map"] #combat-dock #combatants::-webkit-scrollbar {
+  display: none;
 }
 
 
