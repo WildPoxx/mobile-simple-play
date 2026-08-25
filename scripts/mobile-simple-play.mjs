@@ -1,5 +1,5 @@
 /**
- * Mobile Simple Play — v0.1.20
+ * Mobile Simple Play — v0.1.21
  *
  * SAFETY PRINCIPLE OF THIS VERSION — read this before touching anything:
  *
@@ -29,7 +29,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.20";
+const VERSION = "0.1.21";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -1662,6 +1662,15 @@ function injectViewToggle() {
       ?? document.querySelector("#sidebar-tabs menu")
       ?? document.querySelector("#sidebar > nav.tabs menu");
     if (!home) return;
+    // D-TOGGLE-02, 2026-08-25: the class list stays as it is, deliberately.
+    // While chasing the toggle's size I wrote a version that copied the class
+    // list the neighbouring controls share, on the theory that Foundry was
+    // handing our button a different box. The real cause turned out to be a
+    // hard-coded `width: 22px` in our own stylesheet (see D-TOGGLE-02 there),
+    // and the class theory was never confirmed — the offline bench has no icon
+    // font, so a sibling's true width could not be measured there. Changing a
+    // working element on an unverified theory is how this project has been
+    // burned before, so it is reverted and recorded instead.
     home.append(el("li", {},
       el("button", {
         type: "button",
