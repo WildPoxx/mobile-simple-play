@@ -16,7 +16,19 @@ body.msp-on {
      usual cause. Every measurement below is a multiple of it, so the interface
      keeps its PHYSICAL size whatever the browser claims the width is. */
   --msp-rail: calc(68px * var(--msp-scale, 1));
-  --msp-bar: calc(104px * var(--msp-scale, 1));
+  /* D-CANVAS-06, 2026-08-25. A origem horizontal do carrossel. Comecou colada
+     no trilho (68) e Mario mediu 78 na tela: dez pixels de folga entre o botao
+     de alvo e o primeiro retrato. Vive separada de `--msp-rail` de proposito —
+     sao duas grandezas diferentes, e amarrar uma na outra ja seria a terceira
+     vez neste arquivo que um numero muda e leva junto algo que nao devia. */
+  --msp-dock-x: calc(78px * var(--msp-scale, 1));
+  /* D-BAR-01, 2026-08-25. Mario: "acho que a gente pode descer ela pra 90".
+     Medido antes de aceitar: a 90 os quatro botoes de 60 continuam folgados, o
+     alvo de toque nunca cai abaixo dos 48 da ESPEC, e o conteudo ganha 14 px de
+     altura. O Y que ele calculou — 646 — sai sozinho de 736 - 90, e nao precisa
+     ser escrito em lugar nenhum: a barra e ancorada pela BASE. A barra mede 91
+     na tela, e o pixel a mais e a `border-top`, nao arredondamento. */
+  --msp-bar: calc(90px * var(--msp-scale, 1));
   --msp-text: calc(16px * var(--msp-scale, 1));
   --msp-gesture: env(safe-area-inset-bottom, 0px);
   --msp-ink: #e8e3d8;
@@ -73,6 +85,30 @@ body.msp-on #notifications {
   max-height: 40vh;
   overflow: hidden;
   z-index: 80;
+}
+
+/* ---- D-NOTIFY-01: the red boxes do not belong on a phone -----------------
+
+   Mario, 2026-08-25: "todos esses avisos em vermelho do FVTT deveriam ser
+   desabilitados no mobile". On a phone a toast covers the chat — which IS the
+   game — and the player can act on almost none of them: they are addressed to
+   whoever runs the world, on a machine with a keyboard. His own log showed the
+   screen carrying a Sequencer complaint about an effect stretched over a
+   distance of zero. True, perhaps; but not his to fix, and not from a phone.
+
+   Hiding is deliberately done HERE and not in the script. The previous version
+   intercepted `ui.notifications.notify` and returned a fake id; Foundry stored
+   that id, tried to remove the notice by it, and threw on every resize — which
+   on a phone is constant, because the URL bar hides and shows. Standing in the
+   middle of the host's bookkeeping cost us a real bug. CSS stands beside it.
+
+   Nothing is lost: an observer in the script copies every hidden notice into
+   the diagnostic log, so `More -> Save diagnostic log` still carries it.
+
+   `info` and `success` stay: they are how the module answers the player. */
+body.msp-on #notifications > .notification.error,
+body.msp-on #notifications > .notification.warning {
+  display: none !important;
 }
 
 /* -------------------------------------------------- */
@@ -249,6 +285,12 @@ body.msp-on .msp-slot {
   position: relative;
   width: calc(56px * var(--msp-scale, 1));
   height: calc(56px * var(--msp-scale, 1));
+  /* MEASURED 2026-08-25: with a full rail the slots were coming out 52 tall
+     instead of 56. They are flex items in a column that runs out of room, and a
+     flex item SHRINKS before its container agrees to scroll. So the rail was
+     quietly squeezing every icon to avoid admitting it needed a scrollbar —
+     which it has, and which works. Hold the size; let the list scroll. */
+  flex: 0 0 auto;
   margin: calc(4px * var(--msp-scale, 1)) 0;
   padding: 0;
   border: 1px solid transparent;
@@ -288,9 +330,147 @@ body.msp-on .msp-badge {
   color: var(--msp-ink);
   background: rgba(255, 255, 255, .06);
 }
-body.msp-on .msp-wounds  { box-shadow: inset 3px 0 0 #a33; }
-body.msp-on .msp-fatigue { box-shadow: inset 3px 0 0 #37a; }
-body.msp-on .msp-bennies { box-shadow: inset 3px 0 0 var(--msp-accent); }
+
+/* ---- D-WOUNDS-01: os ferimentos viram desenho ---------------------------- */
+
+/* Mario desenhou cinco estados e pediu o numero ao lado. O `.msp-fatigue` saiu
+   junto — "eu so preciso do life" —, e com ele o unico lugar do trilho onde uma
+   informacao aparecia como fracao.
+
+   O CHIP e HTML, e nao parte do desenho, por tres motivos verificados e nao
+   supostos: o numero e texto de verdade e vai para o leitor de tela; a cor sai
+   de token e nao de arquivo; e se a ficha tiver limite diferente de 3 o numero
+   diz a verdade enquanto o desenho so aproxima.
+
+   O card preto ja vem dentro do SVG. Por isso a caixa aqui NAO tem fundo: dois
+   quadros empilhados leriam como erro de recorte. */
+/* A geometria (desenho + chip) vive junto com a do benny, mais abaixo: os dois
+   sao a mesma forma, e o mockup do Mario os desenhou iguais. Aqui fica so a
+   tinta, que e o que os diferencia. */
+body.msp-on .msp-wounds-chip { color: var(--msp-wound-ink, #ccc); }
+
+/* As cores sao as do mockup dele, amostradas do PNG e nao escolhidas por mim.
+   Uma unica mudanca, e ela esta medida: o bronze do 2 estava em #996633, que
+   sobre preto da 4,3:1 e reprova no minimo de 4,5:1 da DEC-012. Subi 6% de
+   brilho no mesmo matiz — #A26C36, 4,73:1. O resto passou como estava:
+   3 = 5,25:1, 1 = 19,6:1, 0 = 13,08:1, X = 21:1. */
+body.msp-on .msp-wounds-chip[data-left="3"]   { --msp-wound-ink: #FF0000; }
+body.msp-on .msp-wounds-chip[data-left="2"]   { --msp-wound-ink: #A26C36; }
+body.msp-on .msp-wounds-chip[data-left="1"]   { --msp-wound-ink: #FFFF33; }
+body.msp-on .msp-wounds-chip[data-left="0"]   { --msp-wound-ink: #CCCCCC; }
+body.msp-on .msp-wounds-chip[data-left="out"] { --msp-wound-ink: #FFFFFF; }
+
+/* ---- D-BENNY-02 e D-RAIL-02: o pe do trilho, medido no mockup ----------- */
+
+/* Numeros lidos do `Screen-Mockup` do Mario, que foi desenhado no viewport de
+   referencia (411 x 736), entao o que se mede nele ja esta em pixel CSS:
+
+       desenho   50 x 50, comecando em x = 5
+       chip      ~20 de largura, mesma altura, logo depois
+       passo     54 (50 do card mais 4 de respiro)
+       fim       x = 78
+
+   Esse 78 nao e coincidencia: e exatamente onde ele mandou o carrossel comecar
+   (D-CANVAS-06). O chip TRANSBORDA o trilho de 68 e para onde o carrossel
+   comeca. Escrito em variavel para que as duas medidas continuem casadas. */
+body.msp-on {
+  --msp-foot-art: calc(50px * var(--msp-scale, 1));
+  --msp-foot-chip: calc(20px * var(--msp-scale, 1));
+  --msp-foot-gap: calc(3px * var(--msp-scale, 1));
+}
+
+/* O pe deixa de centralizar: os tres itens alinham a ESQUERDA, senao o alvo
+   (que nao tem chip) ficaria deslocado em relacao aos outros dois. */
+/* Passo de 54: os 50 do desenho mais os 4 de respiro que o mockup mostra entre
+   as linhas (y = 487, 540, 594). */
+body.msp-on .msp-rail-foot {
+  align-items: flex-start;
+  gap: calc(4px * var(--msp-scale, 1));
+  padding-top: calc(4px * var(--msp-scale, 1));
+}
+body.msp-on .msp-rail-foot > * {
+  margin-left: calc(5px * var(--msp-scale, 1));
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* O alvo agora e desenho dele, e nao mais um glifo de fonte. */
+body.msp-on .msp-target {
+  width: var(--msp-foot-art);
+  height: var(--msp-foot-art);
+  padding: 0;
+}
+body.msp-on .msp-target img {
+  width: 100%; height: 100%; display: block; object-fit: contain;
+}
+
+/* Benny e ferimentos compartilham a forma: desenho mais chip, encostados. */
+body.msp-on .msp-benny,
+body.msp-on .msp-wounds {
+  width: calc(var(--msp-foot-art) + var(--msp-foot-gap) + var(--msp-foot-chip));
+  height: var(--msp-foot-art);
+  display: flex;
+  align-items: center;
+  gap: var(--msp-foot-gap);
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+body.msp-on .msp-benny-art,
+body.msp-on .msp-wounds-art {
+  width: var(--msp-foot-art);
+  height: var(--msp-foot-art);
+  display: block;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+body.msp-on .msp-benny-chip,
+body.msp-on .msp-wounds-chip {
+  flex: 0 0 auto;
+  width: var(--msp-foot-chip);
+  height: var(--msp-foot-art);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(4px * var(--msp-scale, 1));
+  background: #000;
+  font-size: calc(20px * var(--msp-scale, 1));
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Ouro do mockup, amostrado do PNG: #BE9A47. Sobre o preto do chip mede
+   6,53:1 — passa com folga no minimo de 4,5:1. O zero e claro, como ele
+   desenhou, e mede 13,08:1. */
+body.msp-on .msp-benny-chip { color: #BE9A47; }
+body.msp-on .msp-benny-chip[data-empty="yes"] { color: #CCCCCC; }
+
+/* Sem bennies: apagado, e apagado por OPACIDADE aqui, nao por cor de texto.
+   E o caso oposto ao do `.item-unequipped` da ficha, onde a opacidade estava
+   errada: la ela apagava TEXTO que precisa ser lido; aqui ela apaga um botao
+   que precisa parecer indisponivel, e a informacao real esta no rotulo
+   ("Sem bennies"), que chega inteiro ao leitor de tela. O chip fica de fora do
+   apagamento, porque o `0` e justamente o que precisa ser lido. */
+body.msp-on .msp-benny-empty .msp-benny-art { opacity: 0.55; }
+
+/* ---- D-BENNY-01, parte dois: o dado 3D que escapava --------------------- */
+
+/* Achado de 2026-08-25, lido na fonte dos dois modulos e nao suposto.
+   O MSP ja desliga o Dice So Nice ao montar, por `messageHookDisabled`, que e a
+   valvula que o proprio DSN oferece. Mas o SWADE, ao gastar um benny, chama
+   `game.dice3d.showForRoll(...)` DIRETO (SwadeActor.ts, linha 590), e o
+   `showForRoll` do DSN nao consulta essa valvula (Dice3D.js). Resultado: um dado
+   3D em tela cheia no celular, no unico caminho que a mordaca nao alcanca.
+
+   Tres saidas foram consideradas. Escrever `dsnShowBennyAnimation` no usuario
+   resolveria — e e a preferencia DELE, guardada no servidor: mexer nisso para
+   contornar um problema nosso e a mesma interceptacao que este modulo ja
+   lamentou uma vez, quando sombreou o `Notifications#remove` do Foundry.
+   Interceptar `showForRoll` tem o mesmo vicio. Sobra o que o MSP sempre faz:
+   esconder por CSS, no escopo do modo celular, sem escrever estado de ninguem.
+   Sai do ar quando o modo celular sai. */
+body.msp-on #dice-box-canvas { display: none !important; }
 
 /* Long press reveals the name. */
 body.msp-on .msp-tip {
@@ -327,8 +507,16 @@ body.msp-on #msp-bar {
 }
 
 body.msp-on #msp-bar button {
-  min-width: calc(60px * var(--msp-scale, 1));
-  height: calc(60px * var(--msp-scale, 1));
+  /* D-BAR-02, 2026-08-25. Mario: "acho muito grande, acho que a gente pode
+     trabalhar com 48 por 48". Eram 60 x 60, nao 55 — ele estimou a olho e
+     errou para menos, o que so reforca o pedido.
+
+     48 e o PISO de alvo de toque da ESPEC-TELA, nao um numero confortavel: nao
+     ha para onde descer depois disto sem quebrar a regra que o proprio projeto
+     escreveu. Fica registrado aqui para que a proxima reducao seja recusada. */
+  min-width: calc(48px * var(--msp-scale, 1));
+  width: calc(48px * var(--msp-scale, 1));
+  height: calc(48px * var(--msp-scale, 1));
   padding: 0;
   border: 0;
   background: none;
@@ -361,9 +549,24 @@ body.msp-on .msp-pip {
 }
 
 body.msp-on #msp-pc {
-  width: calc(88px * var(--msp-scale, 1)) !important;
-  height: calc(88px * var(--msp-scale, 1)) !important;
-  margin-top: calc(-10px * var(--msp-scale, 1));          /* raised above the bar */
+  /* 74, escolhido por Mario em 2026-08-25 com as folgas medidas a vista: 9 px
+     acima e 8 abaixo, dentro de uma barra de 90. Continua sendo a ancora da
+     barra — uma vez e meia um botao de 48 — sem encostar em nada. */
+  width: calc(74px * var(--msp-scale, 1)) !important;
+  height: calc(74px * var(--msp-scale, 1)) !important;
+  /* D-BAR-03, 2026-08-25. Mario: "decidi que ele nao deve mais vazar para fora
+     da barra. Isso poderia atrapalhar o dock do carrossel."
+
+     Ele esta certo, e a medicao dava razao ao receio: com o retrato saindo 3 px
+     acima da barra, a folga entre a coroa e a base do carrossel era de UM pixel
+     — e o retrato passa justamente por baixo do carrossel, no meio da tela.
+     Isso nao era desenho, era coincidencia; e ela quebraria no dia em que o
+     retrato mudasse de tamanho, que e exatamente o que estava para acontecer.
+
+     Sem a margem negativa o retrato se centra na barra e nada atravessa nada.
+     O respiro de 5 px do carrossel (D-CANVAS-05) deixa de ser arriscado: passa
+     a haver 4 px de ar limpo entre ele e a barra, sem coroa no caminho. */
+  margin-top: 0;
   border-radius: 50% !important;
   border: calc(2px * var(--msp-scale, 1)) solid var(--msp-accent) !important;
   background: var(--msp-back) !important;
@@ -423,6 +626,33 @@ body.msp-on .msp-overlay-foot button {
 body.msp-on .msp-overlay-foot .msp-primary {
   border-color: var(--msp-accent);
   color: var(--msp-accent);
+}
+
+/* ---- D-LOGOUT-01: a saida marcada como saida ---------------------------- */
+
+/* Vermelho medido, e nao escolhido a olho: `#FF5A4E` sobre o fundo da lista
+   (#1c1b19, o mais escuro em que este botao aparece) da 5,58:1, acima do minimo
+   de 4,5:1. O vermelho puro do print (#FF0000) daria 5,25:1 e passaria tambem,
+   mas some para quem tem dificuldade com o vermelho profundo; este e mais
+   claro e continua lendo como perigo.
+
+   E a cor NAO carrega o aviso sozinha: o rotulo diz "Log Out" e a acao pergunta
+   antes de acontecer. A cor so acelera o reconhecimento. */
+body.msp-on .msp-more-list .msp-danger,
+body.msp-on .msp-overlay-foot .msp-danger {
+  color: #FF5A4E;
+  border-color: rgba(255, 90, 78, .55);
+}
+
+/* A pergunta da confirmacao. Uma linha, centrada, com respiro — nao ha nada
+   para ler alem dela. */
+body.msp-on .msp-confirm {
+  margin: 0;
+  padding: calc(20px * var(--msp-scale, 1)) calc(12px * var(--msp-scale, 1));
+  text-align: center;
+  font-size: calc(16px * var(--msp-scale, 1));
+  line-height: 1.45;
+  color: var(--msp-ink);
 }
 
 body.msp-on .msp-row {
@@ -614,11 +844,27 @@ body.msp-on[data-msp-tab="map"] #combat-dock {
   /* Mario, 2026-08-25: "trazer o dock mais pra esquerda, colando ali bem perto
      do alvo, e estender ele o máximo até o lado direito". The target button is
      the last one in our rail, so the strip begins where the rail ends — flush
-     against it, never under it — and runs to the edge of the screen. */
-  left: var(--msp-rail) !important;
+     against it, never under it — and runs to the edge of the screen.
+
+     D-CANVAS-06, 2026-08-25. Mario, medindo na tela: "o x do carrossel vai ter
+     que mudar para 78". O trilho tem 68, entao ele nao quer mais o encosto: quer
+     10 px de folga entre o botao de alvo e o primeiro retrato. Escrito como
+     `--msp-dock-x`, e nao como 78 solto, para que a origem do carrossel seja um
+     numero que se muda num lugar so — e para que ela deixe de ser confundida com
+     a largura do trilho, que e outra coisa e pode mudar sozinha. */
+  left: var(--msp-dock-x) !important;
   right: 0 !important;
   top: auto !important;
-  bottom: calc(var(--msp-bar) + var(--msp-gesture) + calc(30px * var(--msp-scale, 1))) !important;
+  /* D-CANVAS-05, 2026-08-25. Mario: "ele ainda esta muito acima da barra de
+     rodape... vindo da base seria 95". A barra tem 90, entao ele pediu 5 px de
+     respiro. Escrito como RELACAO e nao como 95: `--msp-bar` mais o respiro.
+     Assim, se a barra mudar de altura outra vez, o carrossel a acompanha em vez
+     de flutuar.
+
+     O respiro nao e decorativo. O retrato do PC atravessa a borda da barra —
+     sobe 3 px acima dela — e e justamente sob o carrossel que ele passa. Menos
+     respiro do que a saliencia do retrato e os dois se encostam. */
+  bottom: calc(var(--msp-bar) + var(--msp-gesture) + calc(5px * var(--msp-scale, 1))) !important;
   transform: none !important;
   margin: 0 !important;
   width: auto !important;
@@ -892,4 +1138,397 @@ body.msp-on #chat .chat-message img:not(.card-face):not(.card-back) {
 body.msp-on #chat .chat-message .card-face {
   width: calc(62px * var(--msp-scale, 1)) !important;
   height: auto !important;
+}
+
+
+/* -------------------------------------------------- */
+/*  D-WINDOW-01 — a janela cabe na tela                */
+/* -------------------------------------------------- */
+
+/* Mario relatou, 2026-08-25: o retrato do PC abre a ficha, mas "a primeira vez
+   parece que nao funciona"; depois de abrir a ficha por outro caminho, o botao
+   passa a funcionar.
+
+   Fui ao log de diagnostico dele procurar o erro. NAO HA NENHUM — nem uma falha
+   registrada em "open sheet". O clique roda e chama `actor.sheet.render(true)`
+   sem reclamar. Se o clique funcionou e nada apareceu, a janela abriu onde ele
+   nao ve. A ausencia do erro e a evidencia.
+
+   E ja sabemos que isso acontece aqui: uma janela do Foundry guarda a posicao da
+   ultima vez, em `style` inline. Aberta antes num desktop, ela lembra um
+   `left: 700px` que numa tela de 411 fica inteiramente fora. Foi a mesma
+   familia de defeito do D-CANVAS-04, so que ali a caixa errada era a do
+   ancestral, e aqui e a memoria da propria janela.
+
+   O mesmo vale para o painel do MasterQuest, que entra agora pelo botao do
+   pergaminho: por mais responsivo que seja o CONTEUDO, a JANELA que o carrega
+   herda esse comportamento. Um botao novo que na primeira vez parece nao fazer
+   nada seria pior que nao ter o botao.
+
+   Entao, no modo celular, toda janela do Foundry ocupa a area de conteudo: do
+   trilho ate a borda direita, do topo ate a barra. `!important` e obrigatorio
+   aqui — a posicao lembrada e escrita como estilo inline, e so ele a vence.
+
+   Excluidos: o carrossel, que tem colocacao propria (D-CANVAS-04), e o nosso
+   proprio overlay, que nao e janela do Foundry. */
+body.msp-on .application:not(#combat-dock):not(#msp-overlay):not(#msp-bar):not(#msp-rail) {
+  position: fixed !important;
+  left: var(--msp-rail) !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: calc(var(--msp-bar) + var(--msp-gesture)) !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  transform: none !important;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+
+/* O conteudo da janela rola; o cabecalho fica. Sem isto uma ficha longa estoura
+   a caixa em vez de rolar dentro dela. */
+body.msp-on .application:not(#combat-dock) > .window-content {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Arrastar e redimensionar nao existem num telefone, e o punho de resize rouba
+   o canto onde o polegar rola. */
+body.msp-on .application:not(#combat-dock) > .window-resize-handle {
+  display: none !important;
+}
+
+
+/* -------------------------------------------------- */
+/*  D-SHEET-01 — a ficha em coluna unica               */
+/* -------------------------------------------------- */
+
+/* Mario, 2026-08-25: "o que a gente vai ter que fazer e rearranjar ela pra tudo
+   ficar em uma unica coluna e varias celulas, na versao pra MSP".
+
+   Lido na fonte do SWADE 6.0.4 (src/scss/_character-sheet.scss), o layout da
+   ficha e uma GRADE:
+
+       .main-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+
+   Doze colunas, e 96 regras de span sobre elas — `grid-column: 1/3` para o
+   retrato, `3/10` para o nome, `10/13` para a coluna da direita. E NAO existe
+   uma unica `@media` nem `@container` no arquivo: e uma grade de desktop, sem
+   nenhuma previsao de largura pequena. E literalmente por isso que a ficha
+   quebra no celular.
+
+   Por ser grade, verticalizar e trabalho de CSS e nada mais: uma coluna, e uma
+   manta que anula todos os spans. Nao ha classe de ficha a registrar, nem
+   template a reescrever, nem SWADE a bifurcar.
+
+   POR QUE `@container` E NAO `@media`. A ficha e uma JANELA. A largura dela nao
+   acompanha a do viewport: aqui ela tem 343, no desktop pode ter 900. Uma media
+   query pergunta o tamanho da TELA e responderia a pergunta errada. Uma
+   container query pergunta o tamanho da CAIXA, que e o que decide se cabem duas
+   colunas. Esta e a primeira container query do modulo.
+
+   A manta usa `!important` porque os 96 spans do SWADE sao declaracoes diretas
+   sobre os mesmos elementos. E ela e uma manta de verdade: qualquer filho da
+   grade, presente ou futuro, cai na coluna unica sem precisar ser nomeado. Uma
+   lista de excecoes envelheceria a cada versao do sistema. */
+body.msp-on .application:has(.swade-official) .window-content,
+body.msp-on .swade-official .window-content {
+  container-type: inline-size;
+  container-name: msp-sheet;
+}
+
+/* Cada regra abaixo repete `body.msp-on`, e a repeticao e DELIBERADA. O bloco
+   ja estaria contido: o container `msp-sheet` so e criado por uma regra sob
+   `body.msp-on`, e sem container a query nunca casa. Mas isso obriga quem le a
+   deduzir o escopo por um mecanismo indireto — e a verificacao 43, que conta as
+   regras fora do escopo, leu essas como soltas e falhou. Ela estava certa:
+   escopo que precisa ser deduzido nao e escopo, e uma aposta. */
+@container msp-sheet (max-width: 520px) {
+  body.msp-on .swade-official .main-grid,
+  body.msp-on .swade-official .main-grid > .header {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: none !important;
+    grid-auto-rows: max-content !important;
+  }
+
+  /* A manta: tudo que a grade posiciona passa a ocupar a faixa inteira, na
+     ordem em que o SWADE ja escreveu o HTML. */
+  body.msp-on .swade-official .main-grid > *,
+  body.msp-on .swade-official .main-grid > .header > * {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+  }
+
+  /* O retrato deixa de ser uma coluna e vira uma faixa com altura propria —
+     senao ele estica ate a altura do que costumava ser a linha 1/4. */
+  body.msp-on .swade-official .char-img-container {
+    max-height: 40cqw;
+  }
+  body.msp-on .swade-official .char-img-container img {
+    width: auto;
+    max-height: 100%;
+    object-fit: contain;
+  }
+}
+
+
+/* ==================================================================== */
+/*  D-SHEET-02 — Parchment Hyborian, dentro do MSP e sem dependencia    */
+/* ==================================================================== */
+
+/* Mario, 2026-08-25: "vamos desenvolver a partir dai um modulo proprio de skins
+   para Style Sheet. Comecamos usando esse profile para o MSP... e ele deve ficar
+   no MSP mesmo, a principio, para que isso nao leve a uma exigencia de
+   dependencia de modulos."
+   
+   A exigencia e dupla e parecia contraditoria: a pele deve conversar com o
+   MasterQuest, cujos tokens `--mq-*` sao a linguagem visual ja estabelecida, e
+   ao mesmo tempo NAO pode exigir que o MasterQuest esteja instalado.
+   
+   A saida e a cascata de reserva do proprio CSS:
+   
+       var(--mq-surface-0, var(--msp-parch-surface-0))
+   
+   Se o MasterQuest estiver no mundo, o token dele vence e a ficha combina com o
+   painel de missoes de graca — inclusive quando ele trocar de skin. Se nao
+   estiver, cai na copia local abaixo e a pele funciona igual, sozinha. Nenhum
+   `game.modules.get`, nenhuma checagem, nenhuma dependencia declarada: a
+   resolucao acontece no navegador, por valor, e nao por modulo.
+   
+   CONSEQUENCIA QUE PRECISA FICAR CLARA: morando aqui, tudo esta sob
+   `body.msp-on`, entao o pergaminho vale NO CELULAR e nao no desktop. E o que
+   Mario pediu — "comecamos usando esse profile para o MSP" — e continua honrando
+   a promessa do modulo de nao mudar um pixel de ninguem quando desligado.
+   Quando o modulo de skins existir, estas regras saem daqui para la, perdem o
+   `body.msp-on` e passam a valer nos dois lados. A copia de tokens abaixo e o
+   embriao daquele modulo.
+   
+   Os valores sao os da skin "pergaminho" do MasterQuest (DEC-011), com as
+   razoes de contraste que ele ja mediu anotadas no arquivo dele. Nao inventei
+   cor nenhuma. */
+body.msp-on {
+  --msp-parch-surface-0: #E9DFC6;   /* base da janela                        */
+  --msp-parch-surface-1: #F2EAD6;   /* elevado: cartoes, linhas              */
+  --msp-parch-surface-2: #DACCAE;   /* rebaixado: cabecalhos, campos         */
+  --msp-parch-chrome: #3A2C1E;      /* couro da barra de titulo              */
+  --msp-parch-on-chrome: #F2EAD6;   /* 11.2:1                                */
+  --msp-parch-text: #2A241A;        /* 11.6:1                                */
+  --msp-parch-muted: #6A5D46;       /* 4.9:1                                 */
+  --msp-parch-bronze: #7E5024;      /* 5.2:1                                 */
+  --msp-parch-chip: #815140;        /* contorno de aba                       */
+  --msp-parch-chip-on: rgba(220, 177, 39, 0.65);
+  --msp-parch-border: rgba(42, 36, 26, 0.25);
+  --msp-parch-border-strong: rgba(42, 36, 26, 0.45);
+  --msp-parch-focus: #33635C;       /* 5.1:1                                 */
+  --msp-parch-display: "Cinzel", "Modesto Condensed", serif;
+}
+
+/* A superficie: papel, nao vidro escuro. O SWADE poe uma sombra interna pesada
+   que serve ao tema escuro e suja o pergaminho. */
+body.msp-on .swade-official .window-content {
+  background: var(--mq-surface-0, var(--msp-parch-surface-0));
+  color: var(--mq-text, var(--msp-parch-text));
+  box-shadow: none;
+}
+
+/* Barra de titulo: couro, como no MasterQuest, para que a ficha e o painel de
+   missoes leiam como o mesmo objeto de mesa. */
+body.msp-on .swade-official .window-header {
+  background: var(--mq-chrome-bg, var(--msp-parch-chrome));
+  color: var(--mq-on-chrome, var(--msp-parch-on-chrome));
+  font-family: var(--mq-font-display, var(--msp-parch-display));
+}
+
+/* O nome e o unico display grande da ficha. */
+body.msp-on .swade-official .charname-container input[type] {
+  font-family: var(--mq-font-display, var(--msp-parch-display));
+  font-size: calc(26px * var(--msp-scale, 1));
+  color: var(--mq-text, var(--msp-parch-text));
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--mq-border, var(--msp-parch-border));
+}
+
+/* Dado secundario: tinta apagada, nunca competindo com o nome. */
+body.msp-on .swade-official .character-detail {
+  color: var(--mq-text-muted, var(--msp-parch-muted));
+  font-size: calc(12px * var(--msp-scale, 1));
+}
+
+/* Retrato: moldura de bronze, o metal dos ornamentos do MasterQuest. */
+body.msp-on .swade-official .char-img-container img {
+  border: 2px solid var(--mq-metal-bronze, var(--msp-parch-bronze));
+  border-radius: calc(4px * var(--msp-scale, 1));
+  background: var(--mq-surface-2, var(--msp-parch-surface-2));
+}
+
+/* Abas: chip contornado, ativo em ambar. A cor nunca e o unico sinal — a aba
+   ativa tambem ganha peso, para quem nao distingue as duas. */
+body.msp-on .swade-official .tabs .item,
+body.msp-on .swade-official .sub-tabs .item {
+  font-family: var(--mq-font-display, var(--msp-parch-display));
+  font-size: calc(12px * var(--msp-scale, 1));
+  color: var(--mq-text, var(--msp-parch-text));
+  background: var(--mq-surface-1, var(--msp-parch-surface-1));
+  border: 1px solid var(--mq-chip-outline, var(--msp-parch-chip));
+  border-radius: calc(4px * var(--msp-scale, 1)) calc(4px * var(--msp-scale, 1)) 0 0;
+  padding: calc(4px * var(--msp-scale, 1)) calc(12px * var(--msp-scale, 1));
+}
+body.msp-on .swade-official .tabs .item.active,
+body.msp-on .swade-official .sub-tabs .item.active {
+  background: var(--mq-chip-active-bg, var(--msp-parch-chip-on));
+  font-weight: 700;
+}
+
+/* Cabecalhos de secao: faixa rebaixada e epigrafica, como Objetivos e Pistas. */
+body.msp-on .swade-official .section-header {
+  background: var(--mq-surface-2, var(--msp-parch-surface-2));
+  color: var(--mq-text, var(--msp-parch-text));
+  font-family: var(--mq-font-display, var(--msp-parch-display));
+  font-size: calc(12px * var(--msp-scale, 1));
+  border-bottom: 1px solid var(--mq-border-strong, var(--msp-parch-border-strong));
+  padding: calc(4px * var(--msp-scale, 1)) calc(8px * var(--msp-scale, 1));
+}
+
+body.msp-on .swade-official .sheet-body,
+body.msp-on .swade-official .tab {
+  background: var(--mq-surface-0, var(--msp-parch-surface-0));
+}
+body.msp-on .swade-official .item {
+  border-bottom: 1px solid var(--mq-border, var(--msp-parch-border));
+}
+
+/* Item guardado: opacidade E tinta apagada — dois sinais, nao so a cor. */
+/* Item guardado. A `opacity: 0.75` que estava aqui foi REMOVIDA em 2026-08-25:
+   medida na bancada, ela derrubava o contraste do texto para ~3,0:1, abaixo do
+   minimo de 4,5:1 da DEC-012 — e derrubava tambem sem textura nenhuma, ou seja,
+   nasceu quebrada. A tinta apagada sozinha mede 4,85:1 e passa. O segundo sinal,
+   que a regra de acessibilidade exige, deixa de ser opacidade e passa a ser
+   forma: italico. Cor nunca carrega o sinal sozinha. */
+body.msp-on .swade-official .item-unequipped {
+  color: var(--mq-text-muted, var(--msp-parch-muted));
+  font-style: italic;
+}
+
+/* Foco visivel. Requisito de acessibilidade, e o token ja existe. */
+body.msp-on .swade-official :is(input, select, textarea, button, a):focus-visible {
+  outline: 2px solid var(--mq-focus, var(--msp-parch-focus));
+  outline-offset: 2px;
+}
+
+
+/* ---- D-SHEET-03: o pergaminho envelhece nas bordas ---------------------- */
+
+/* Mario, 2026-08-25: "tente colocar um efeito que lembre um pergaminho
+   manchado, pelo menos nas bordas... um pontilhado de areia, ou hachuras, ou
+   talvez ate manchas de sangue."
+
+   Tudo em CSS e SVG embutido — nenhum arquivo de imagem, pelo mesmo motivo que
+   o `--mq-grain` do MasterQuest ja e um data-URI: o modulo carrega o que
+   desenha, e nao ha caminho de asset para quebrar.
+
+   ---- POR QUE ISTO VEM COM BOTOES -----------------------------------------
+
+   Textura e materia de direcao de arte, e Mario e o diretor. Duas rodadas de
+   ajuste a olho ja mostraram o problema de eu decidir sozinho: na primeira o
+   efeito era invisivel, na segunda a hachura virou estampa. Em vez de uma
+   terceira tentativa minha, cada camada e uma VARIAVEL. Ele muda um numero e
+   ve, sem depender de mim e sem mexer numa regra.
+
+       --msp-parch-texture   0 a 1   grao de areia e fibra do papel
+       --msp-parch-age       0 a 1   vinheta das bordas e manchas de idade
+       --msp-parch-blood     0 ou 1  respingos, DESLIGADO por padrao
+
+   ---- AS DUAS CAMADAS ------------------------------------------------------
+
+   Separadas de proposito, em dois pseudo-elementos, porque tem naturezas
+   diferentes: a textura se REPETE pelo papel inteiro, o envelhecimento se
+   CONCENTRA nas bordas. Juntas num so, um botao mexeria na outra.
+
+   As duas vivem sobre a JANELA e nao sobre a area que rola. Uma sujeira que
+   corre junto com o texto denuncia na hora que e um efeito — a mancha esta no
+   papel, e o papel nao se move. E as duas tem `pointer-events: none`: nao
+   interceptam um toque sequer.
+
+   O centro fica sempre limpo. Escurecer a borda e a unica forma de manchar sem
+   custar legibilidade — e o texto mora no meio. */
+body.msp-on {
+  /* Mario escolheu FORTE em 2026-08-25, entre leve / padrao / forte / com
+     sangue, olhando o `parch-comparativo.png`. Textura no maximo, idade no
+     maximo, sangue desligado. */
+  --msp-parch-texture: 1;
+  --msp-parch-age: 1;
+  --msp-parch-blood: 0;
+
+  /* baseFrequency alta = grao FINO, de areia. Abaixo de ~1.0 o ruido vira
+     nuvem e le como sujeira de tela, nao como papel. */
+  --msp-parch-grain:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.30  0 0 0 0 0.22  0 0 0 0 0.12  0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23s)'/%3E%3C/svg%3E");
+  /* Fibra: hachura diagonal, a sugestao de trama. Fraca de proposito — quando
+     ela se ve como listra, virou estampa e nao papel. */
+  --msp-parch-fibre:
+    repeating-linear-gradient(58deg,
+      rgba(122, 78, 18, 0.05) 0 1px, transparent 1px 9px);
+}
+
+body.msp-on .swade-official {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Camada 1 — a materia do papel: areia e fibra, por toda a folha. */
+body.msp-on .swade-official::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: var(--msp-parch-texture, 1);
+  background-image: var(--msp-parch-fibre), var(--msp-parch-grain);
+  background-repeat: repeat, repeat;
+  mix-blend-mode: multiply;
+}
+
+/* Camada 2 — a idade: vinheta nas bordas, foxing nos cantos, sangue opcional. */
+body.msp-on .swade-official::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: var(--msp-parch-age, 1);
+  background-image:
+    /* foxing: manchas de idade, fora do eixo de leitura */
+    radial-gradient(ellipse 56px 36px at 4% 9%,   rgba(116, 74, 20, 0.30), transparent 70%),
+    radial-gradient(ellipse 38px 28px at 97% 22%, rgba(116, 74, 20, 0.26), transparent 70%),
+    radial-gradient(ellipse 62px 40px at 94% 94%, rgba(116, 74, 20, 0.28), transparent 72%),
+    radial-gradient(ellipse 44px 30px at 6% 90%,  rgba(116, 74, 20, 0.24), transparent 70%),
+    /* sangue: desligado por padrao. E o elemento que mais rapido cansa, e o
+       unico aqui que compete com a leitura em vez de emoldura-la. */
+    radial-gradient(ellipse 34px 24px at 79% 7%,
+      rgba(132, 40, 32, calc(0.30 * var(--msp-parch-blood, 0))), transparent 66%),
+    radial-gradient(ellipse 20px 30px at 86% 13%,
+      rgba(132, 40, 32, calc(0.22 * var(--msp-parch-blood, 0))), transparent 68%),
+    /* vinheta: a borda encosta na mesa, na mao e no tempo; o centro nao. */
+    radial-gradient(ellipse 112% 100% at 50% 48%,
+      transparent 30%, rgba(78, 54, 28, 0.20) 58%,
+      rgba(66, 45, 24, 0.44) 82%, rgba(48, 33, 18, 0.66) 100%);
+  background-repeat: no-repeat;
+  mix-blend-mode: multiply;
+}
+
+/* A borda da folha: um filete de tinta, para o papel ter fim. */
+body.msp-on .swade-official .window-content {
+  box-shadow: inset 0 0 0 1px var(--mq-border-strong, var(--msp-parch-border-strong));
+}
+
+/* Quem pediu menos movimento nao quer textura em cima do texto. */
+@media (prefers-reduced-motion: reduce) {
+  body.msp-on .swade-official::before,
+  body.msp-on .swade-official::after { background-image: none; }
 }
