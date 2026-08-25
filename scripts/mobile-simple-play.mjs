@@ -29,7 +29,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.21";
+const VERSION = "0.1.22";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -361,49 +361,79 @@ async function saveLog() {
 /* -------------------------------------------------- */
 
 /**
- * On a phone, Foundry permanently complains that the window is smaller than
- * 1024x768. It is right, it is unfixable, and it covers the chat. While mobile
- * mode is on we suppress it — the notice, not the condition.
+ * D-NOTIFY-01, 2026-08-25. Two things at once, and the first is a bug of ours.
+ *
+ * ---- THE BUG, found in Mario's own diagnostic log --------------------------
+ *
+ *     Uncaught Error: You must pass a Notification or numeric ID to
+ *                     Notifications#remove
+ *         at Notifications.remove (foundry.mjs:145427)
+ *         at #validateResolution (foundry.mjs:203521)
+ *
+ * repeated on every resize — and a phone resizes constantly, because the URL
+ * bar hides and shows as you scroll.
+ *
+ * We caused it. The previous version of this function shadowed
+ * `ui.notifications.notify` and returned `-1` for the resolution notice.
+ * Foundry KEEPS that return value: `#validateResolution` stores it and later
+ * calls `remove()` with it to take the notice down. Handed a `-1` that never
+ * corresponded to a notification, `remove()` throws.
+ *
+ * The lesson is worth more than the fix. Intercepting a host function is not
+ * free just because the interception is small: whatever the host does with the
+ * RETURN VALUE is now our responsibility too, and we cannot know what that is.
+ * The module's own first principle — Foundry is the authority — argues against
+ * standing in the middle of its bookkeeping at all.
+ *
+ * ---- MARIO'S REQUEST, same day --------------------------------------------
+ *
+ * "Todos esses avisos em vermelho do FVTT deveriam ser desabilitados no mobile."
+ * He is right. On a phone, a red toast covers the chat — which IS the game —
+ * and the player can act on almost none of them: they are addressed to whoever
+ * is running the world, on a machine with a keyboard.
+ *
+ * ---- THE DESIGN THAT SOLVES BOTH ------------------------------------------
+ *
+ * Stop intercepting. Let Foundry and every module create their notifications
+ * exactly as they always did, so every return value stays real and nobody's
+ * bookkeeping breaks. Then simply do not SHOW the ones the player cannot act
+ * on — a matter of CSS, in `body.msp-on`, which changes nothing for anyone
+ * else and undoes itself the moment mobile mode is turned off.
+ *
+ * Nothing is lost, and that distinction matters: an observer copies every
+ * hidden notice into the diagnostic log, so `More -> Save diagnostic log`
+ * still carries it. The notice is moved, not silenced.
+ *
+ * `info` and `success` stay on screen. They are the module's own way of
+ * answering the player — "log saved", "target set" — and a phone with no
+ * feedback at all is worse than a phone with a red box.
  */
 function silenceResolutionNotices() {
-  safe("silence resolution notices", () => {
-    const notes = ui.notifications;
-    if (!notes || ui_.notify) return;
+  safe("watch notifications", () => {
+    const list = document.querySelector("#notifications");
+    if (!list || ui_.noteWatch) return;
 
-    // 1. Stop future ones. `#validateResolution` re-fires on every resize, and
-    //    a mobile browser resizes constantly as the URL bar hides and shows.
-    //    We remember the exact property descriptor we are shadowing, so that
-    //    unmount puts back what was there — whether that was an inherited
-    //    prototype method (Foundry's own) or another module's override. Simply
-    //    deleting the property would destroy the latter.
-    const prior = Object.getOwnPropertyDescriptor(notes, "notify") ?? null;
-    const original = notes.notify.bind(notes);
-    ui_.notify = { prior, original };
-    notes.notify = function(message, type, options) {
-      if (typeof message === "string" && RESOLUTION_KEYS.includes(message)) return -1;
-      return original(message, type, options);
-    };
+    const record = (node) => safe("log a hidden notice", () => {
+      if (!(node instanceof HTMLElement)) return;
+      if (!node.classList.contains("error") && !node.classList.contains("warning")) return;
+      const kind = node.classList.contains("error") ? "error" : "warning";
+      const text = (node.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 300);
+      diag("notice hidden", `${kind} · ${text}`);
+    });
 
-    // 2. Remove the one already on screen. We match on the localized text up to
-    //    its first placeholder, so this works in any language.
-    const prefixes = RESOLUTION_KEYS.map(key => {
-      const s = t(key, "");
-      const cut = s.indexOf("{");
-      return (cut > 12 ? s.slice(0, cut) : s.slice(0, 48)).trim();
-    }).filter(p => p.length > 12);
-    for (const node of document.querySelectorAll("#notifications .notification")) {
-      const txt = (node.textContent ?? "").trim();
-      if (prefixes.some(p => txt.startsWith(p))) node.remove();
-    }
+    for (const node of list.children) record(node);
+    const watch = new MutationObserver((records) => {
+      for (const r of records) for (const node of r.addedNodes) record(node);
+    });
+    watch.observe(list, { childList: true });
+    ui_.noteWatch = watch;
   });
 }
 
 function restoreResolutionNotices() {
-  safe("restore resolution notices", () => {
-    if (!ui_.notify) return;
-    if (ui_.notify.prior) Object.defineProperty(ui.notifications, "notify", ui_.notify.prior);
-    else delete ui.notifications.notify;
-    ui_.notify = null;
+  safe("stop watching notifications", () => {
+    ui_.noteWatch?.disconnect();
+    ui_.noteWatch = null;
   });
 }
 
@@ -537,35 +567,174 @@ function buildRail() {
 
   rail.append(top);
 
-  // FOOT OF THE RAIL: status (read-only) and targeting.
+  /* FOOT OF THE RAIL — D-RAIL-02, 2026-08-25, read off Mario's screen mockup.
+     Order, top to bottom: TARGET, BENNY, WOUNDS.
+
+     This REVERSES what was built a few hours earlier. His sentence had been "o
+     Benny, ele vai ficar na esquerda, em cima do alvo", which I read as "above
+     the target" and implemented that way. His mockup, drawn afterwards and at
+     the real viewport, puts the crosshair first and the benny under it. The
+     drawing is later and unambiguous, so the drawing wins — and this note stays
+     so nobody "fixes" the order back on the strength of the old sentence. */
   const foot = el("div", { class: "msp-rail-foot" });
-  foot.append(buildStatusBadges(actor));
   foot.append(railButton({
     label: t("MSP.Target.Label", "Target"),
     cls: "msp-target",
-    icon: "fa-solid fa-crosshairs",
+    img: `modules/${MOD}/icons/target-001.svg`,
     onClick: openTargetPicker
   }));
+  const benny = buildBennyButton(actor);
+  if (benny) foot.append(benny);
+  foot.append(buildStatusBadges(actor));
   rail.append(foot);
 
   return rail;
 }
 
+/* What is left of the old badge column: the wounds picture, alone. The bennies
+   badge went with D-BENNY-02 — the benny button now carries its own count, and
+   the rail had been printing that number twice. */
 function buildStatusBadges(actor) {
   const box = el("div", { class: "msp-status" });
-  const add = (label, value, cls) => {
-    box.append(el("div", { class: `msp-badge ${cls}`, "aria-label": label, text: String(value) }));
-  };
   safe("status badges", () => {
-    const sys = actor.system ?? {};
-    const w = sys.wounds;
-    const f = sys.fatigue;
-    const b = sys.bennies;
-    if (w) add(t("MSP.Status.Wounds", "Wounds"), `${w.value ?? 0}/${w.max ?? 0}`, "msp-wounds");
-    if (f) add(t("MSP.Status.Fatigue", "Fatigue"), `${f.value ?? 0}/${f.max ?? 0}`, "msp-fatigue");
-    if (b) add(t("MSP.Status.Bennies", "Bennies"), `${b.value ?? 0}`, "msp-bennies");
+    if (actor.system?.wounds) box.append(buildWoundsIcon(actor));
   });
   return box;
+}
+
+/* -------------------------------------------------- */
+/*  D-WOUNDS-01 — wounds as a picture, not a fraction  */
+/* -------------------------------------------------- */
+
+/* Mario drew five states in Illustrator and asked for the count beside them:
+   three red drops when whole, one drop going grey per wound, a skull when the
+   character is out. The number is the drops still RED — how many more hits the
+   character can take — not the wounds already suffered. Those two readings are
+   inverses of each other, and shipping the wrong one would make the rail lie
+   about whether the player is safe. It is spelled out here for that reason.
+
+   Fatigue left with this change, by his call: "eu so preciso do life, nao
+   preciso da fadiga nao".
+
+   The art is his file, referenced as <img> and never inlined. Inlining is the
+   tempting option — it would let CSS recolour the drops — but the five files all
+   declare `.cls-1` through `.cls-8` with DIFFERENT meanings, so two of them in
+   one document repaint each other. Verified on the bench: rendering all five
+   together required scoping every rule by hand. As <img> each file keeps its
+   own stylesheet, and the drawing stays exactly as it left Illustrator. */
+
+const WOUND_ART = ["Wounds-00", "Wounds-01", "Wounds-02", "Wounds-03"];
+const WOUND_ART_OUT = "Wounds-Death";
+
+/* Read from the SWADE source, not guessed (src/module/data/actor/base/creature.ts):
+   `system.wounds.value` counts wounds taken and `system.wounds.max` is 3 for a
+   Wild Card, 1 for an Extra. Being out of the fight is NOT wounds.value = 4: it
+   is the `incapacitated` status effect, which SWADE exposes as
+   `system.status.isIncapacitated` over core Foundry's `actor.statuses`. A Wild
+   Card who fails the Vigor roll is out at three wounds, so counting alone would
+   miss him. Ask the status first, fall back to core, then to the count. */
+function woundState(actor) {
+  const sys = actor?.system ?? {};
+  const max = Number(sys.wounds?.max ?? 3) || 3;
+  const taken = Math.max(0, Math.min(Number(sys.wounds?.value ?? 0) || 0, max));
+
+  const out = sys.status?.isIncapacitated
+    ?? actor?.statuses?.has?.("incapacitated")
+    ?? (taken > max);
+
+  /* A three-step ramp for a three-wound sheet. An Extra has max 1, and drawing
+     his single wound as "two drops gone" would be a lie of a different kind — so
+     the art is picked by PROPORTION whenever the sheet is not the usual three. */
+  const left = max - taken;
+  const step = max === 3 ? taken : Math.round((taken / max) * 3);
+
+  return { out: !!out, taken, max, left, art: out ? WOUND_ART_OUT : WOUND_ART[Math.min(step, 3)] };
+}
+
+/* -------------------------------------------------- */
+/*  D-BENNY-01 — spending a benny from the rail        */
+/* -------------------------------------------------- */
+
+/* D-BENNY-02, 2026-08-25. Mario drew the bennies the same way he drew the
+   wounds — art plus a chip — and stated the rule himself:
+   "quando ele tiver com tres, aparece os tres... a numeracao vai indicar
+   exatamente a quantidade, mas passou de tres, o icone sempre e o de tres".
+
+   So the two halves say DIFFERENT things on purpose, and that is the whole
+   design: the picture is a coarse gauge that saturates at three, the number is
+   exact and does not. Four bennies show three chips and the numeral 4. Nobody
+   has to draw a fourth token, and nothing lies — the numeral is right there.
+
+   This replaces the icon-only button built earlier today, and the separate
+   `.msp-bennies` numeric badge is gone with it: the rail was printing that
+   figure twice, which was flagged at the time as a question for his layout.
+   The layout answered.
+
+   Read from the SWADE source (SwadeActor.ts, line 565): `actor.bennies` is a
+   getter over `system.bennies.value`, and `spendBenny()` already returns false
+   when there is nothing to spend. The guard below is therefore not defensive
+   decoration — it is so the button LOOKS spent, because on a phone there is no
+   hover to reveal that a live-looking button will do nothing.
+
+   We do NOT touch `dsnShowBennyAnimation`. It is the player's own flag, stored
+   on the server, and writing someone's preference to work around our own layout
+   is the kind of interception this module already regretted once with
+   `Notifications#remove`. The 3D die is handled where it belongs — in CSS,
+   under `body.msp-on`. See D-BENNY-01 in the stylesheet. */
+
+const BENNY_ART = ["BennieBlank", "Bennie01", "Bennie02", "Bennies-003"];
+
+function bennyState(actor) {
+  const count = Math.max(0, Number(actor?.bennies ?? actor?.system?.bennies?.value ?? 0) || 0);
+  return { count, art: BENNY_ART[Math.min(count, 3)] };   // saturates at three, by his rule
+}
+
+function buildBennyButton(actor) {
+  return safe("benny button", () => {
+    if (typeof actor?.spendBenny !== "function") return null;   // not a SWADE actor
+    const s = bennyState(actor);
+
+    const label = s.count > 0
+      ? `${t("MSP.Benny.Spend", "Spend a benny")} (${s.count})`
+      : t("MSP.Benny.None", "No bennies left");
+
+    const btn = el("button", {
+      type: "button",
+      class: `msp-slot msp-badge msp-benny${s.count > 0 ? "" : " msp-benny-empty"}`,
+      "aria-label": label,
+      title: label,
+      onclick: (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (s.count > 0) safeAsync("spend a benny", () => actor.spendBenny());
+      }
+    },
+      el("img", { class: "msp-benny-art", src: `modules/${MOD}/icons/bennies/${s.art}.svg`, alt: "" }),
+      el("span", { class: "msp-benny-chip", "data-empty": s.count ? "no" : "yes", "aria-hidden": "true", text: String(s.count) })
+    );
+    if (s.count < 1) btn.setAttribute("aria-disabled", "true");
+    attachLongPress(btn, label);
+    return btn;
+  }) ?? null;
+}
+
+function buildWoundsIcon(actor) {
+  const s = woundState(actor);
+  const label = s.out
+    ? t("MSP.Status.Incapacitated", "Incapacitated")
+    : `${t("MSP.Status.Wounds", "Wounds")}: ${s.taken}/${s.max}`;
+
+  /* role="img" with aria-label, because the meaning lives in a picture and a
+     single glyph: a screen reader must hear the sentence, not "2". */
+  return el("div", { class: "msp-badge msp-wounds", role: "img", "aria-label": label, title: label },
+    el("img", { class: "msp-wounds-art", src: `modules/${MOD}/icons/wounds/${s.art}.svg`, alt: "" }),
+    el("span", {
+      class: "msp-wounds-chip",
+      "data-left": s.out ? "out" : String(s.left),
+      "aria-hidden": "true",
+      text: s.out ? "X" : String(s.left)
+    })
+  );
 }
 
 /* -------------------------------------------------- */
@@ -644,7 +813,7 @@ function openOverlay(title, content, buttons = []) {
   for (const b of buttons) {
     foot.append(el("button", {
       type: "button",
-      class: b.primary ? "msp-primary" : "",
+      class: `${b.primary ? "msp-primary" : ""}${b.danger ? " msp-danger" : ""}`.trim(),
       text: b.label,
       onclick: () => safe(`button "${b.label}"`, b.onClick)
     }));
@@ -1017,6 +1186,46 @@ function setTab(tab) {
   });
 }
 
+/**
+ * The MasterQuest player panel, or null when the module is not there.
+ *
+ * Returned as a function rather than a boolean so the lookup happens once, at
+ * build time, and the click calls exactly what was found — no second guess at
+ * the moment the player taps.
+ */
+function questLogOpener() {
+  return safe("find the quest log", () => {
+    const api = game.modules?.get("master-quest")?.api ?? globalThis.MasterQuest;
+    const open = api?.masterQuest?.openQuestLog;
+    return typeof open === "function" ? () => api.masterQuest.openQuestLog() : null;
+  }) ?? null;
+}
+
+/**
+ * D-JOURNAL-01 — find a way to open the journal directory, or admit there is none.
+ *
+ * Two doors are tried, in order of how directly they name the thing:
+ * `ui.journal` is the directory itself; `ui.sidebar.tabs.journal` is the same
+ * object reached through the sidebar, which is where Foundry 14 moved the tab
+ * registry. Whichever answers with a callable `renderPopout` wins.
+ *
+ * A popout, not a sidebar tab switch: MSP pins the sidebar to the chat, so
+ * switching tabs there would fight our own layout. A window, on the other hand,
+ * is already handled — D-WINDOW-01 pins every Foundry window to the phone
+ * screen, so the journal arrives full-screen and framed.
+ *
+ * Returning null is a real outcome, not a failure: no opener, no menu entry.
+ */
+function journalOpener() {
+  return safe("find the journal", () => {
+    const doors = [globalThis.ui?.journal, globalThis.ui?.sidebar?.tabs?.journal];
+    for (const d of doors) {
+      if (d && typeof d.renderPopout === "function") return () => d.renderPopout();
+    }
+    return null;
+  }) ?? null;
+}
+
 function tabButton(tab, icon, label) {
   const btn = el("button", {
     type: "button",
@@ -1046,6 +1255,38 @@ function buildBar() {
   }
 
   // The character button — an action, never "lit".
+  // D-QUEST-01, 2026-08-25. Mario runs MasterQuest, his own quest-management
+  // module, and asked for a door to it from the phone.
+  //
+  // The door is one the module already opens for itself. Read in its source
+  // (10_Module-Source/master-quest/scripts/init.js), MasterQuest registers its
+  // scene-control group for the PLAYER as well as the GM, with a comment saying
+  // why: "das quatro ferramentas, so o Quest Log e comum, e as outras tres
+  // seguem GM-only". And its own Journal-directory button already splits the
+  // two cases exactly as we need:
+  //
+  //     onClick: () => (isGM ? api.masterQuest.open() : api.masterQuest.openQuestLog())
+  //
+  // So we call `openQuestLog()` and land straight on the player's panel, with no
+  // menu in between — and we invent nothing, which is the rule.
+  //
+  // The icon is `fa-solid fa-scroll`: MasterQuest's own group icon, chosen by
+  // Mario over the Quest Log tool's checklist because on a phone a scroll reads
+  // as "the missions" and is what he already recognises in the left column.
+  //
+  // Detection is defensive, in the same shape as the rail's swade-tools door: in
+  // a world without MasterQuest the button is simply never built. Nothing to
+  // configure, nothing to fail.
+  const quests = questLogOpener();
+  if (quests) {
+    bar.append(el("button", {
+      type: "button",
+      id: "msp-quests",
+      "aria-label": t("MSP.Quests.Label", "Quests"),
+      onclick: () => safe("open the quest log", quests)
+    }, el("i", { class: "fa-solid fa-scroll" })));
+  }
+
   const actor = myActor();
   const pc = el("button", {
     type: "button",
@@ -1082,17 +1323,81 @@ function openMore() {
     type: "button", text: t("MSP.More.Hotbar", "Hotbar"),
     onclick: () => { closeOverlay(); openHotbar(); }
   }));
+  /* D-JOURNAL-01, 2026-08-25. Mario: "a gente precisa achar uma forma de colocar
+     um botão para Journal... pode ser resolvido no Mais". Here, and not on the
+     bar: the bar is full at five, and the journal is something a player opens
+     between scenes, not mid-turn.
+
+     Looked up rather than assumed, the same shape as the quest opener. I could
+     not verify the sidebar API against a local Foundry core in this session, so
+     the module ASKS instead of asserting: two known doors, first one that is a
+     function wins, and no entry at all when neither answers. Being wrong about
+     an API you did not open is how this project lost a round before. */
+  const journal = journalOpener();
+  if (journal) {
+    box.append(el("button", {
+      type: "button", text: t("MSP.More.Journal", "Journals"),
+      onclick: () => { closeOverlay(); journal(); }
+    }));
+  }
+
+  /* D-LOGOUT-01, 2026-08-25. Mario: "a opção de Logout do Foundry via MSP, essa
+     é importante. Certifique-se que ele venha acompanhada de uma janela de
+     confirmação." It takes the slot the diagnostic log used to hold — with the
+     Chrome emulator running on his desktop, saving a log from the phone stopped
+     earning its place.
+
+     Marked as destructive, and it is: on a phone there is no menu bar to get
+     back in with, so a stray thumb ends the session and the player has to find
+     the URL again mid-fight. The confirmation is not politeness. */
   box.append(el("button", {
-    type: "button", text: t("MSP.More.SaveLog", "Save diagnostic log"),
-    onclick: () => { closeOverlay(); saveLog(); }
+    type: "button", class: "msp-danger", text: t("MSP.More.LogOut", "Log Out"),
+    onclick: () => confirmLogOut()
   }));
-  box.append(el("button", {
-    type: "button", text: t("MSP.More.Disable", "Turn off mobile mode"),
-    onclick: () => { closeOverlay(); disableAndReload(); }
-  }));
+  // Mario, 2026-08-25: "à medida que a gente tem um ícone, essa opção Turn off
+  // mobile é desnecessária". Right: the leftmost button on the bar calls exactly
+  // this — disableAndReload() — and is always on screen, while this one costs a
+  // tap to reach. Two doors to the same room, one of them hidden. Removed.
+  //
+  // The way out is not thereby reduced to one: the bar button is always there,
+  // and the world setting (Mobile mode, unchecked) remains the escape hatch for
+  // a client that somehow cannot render the bar. The README says so.
 
   openOverlay(t("MSP.More.Label", "More"), box, [
     { label: t("MSP.Common.Close", "Close"), onClick: closeOverlay, primary: true }
+  ]);
+}
+
+/**
+ * D-LOGOUT-01 — leaving the world, on purpose and not by accident.
+ *
+ * Two things worth stating, because both were deliberate:
+ *
+ * 1. The confirmation reuses MSP's own overlay rather than Foundry's dialog.
+ *    Not for looks: our overlay is already sized to the phone and already
+ *    survives the layout, while a Foundry dialog arrives as a window and would
+ *    be caught by D-WINDOW-01, filling the screen for a two-line question.
+ *
+ * 2. CANCEL is the primary button, and the affirmative is the plain one — the
+ *    reverse of the usual. The cost of the two mistakes is not symmetrical:
+ *    cancelling by accident costs a tap, confirming by accident ends the
+ *    session on a device with no menu bar to climb back through.
+ *
+ * `game.logOut()` is Foundry's own exit. We do not clear settings, flags or
+ * storage on the way out: the module's whole principle is that Foundry is the
+ * authority, and a log-out that also quietly resets the player's state would be
+ * exactly the kind of extra that nobody asked for.
+ */
+function confirmLogOut() {
+  const msg = el("p", { class: "msp-confirm", text: t("MSP.LogOut.Ask",
+    "Leave the game and return to the login screen?") });
+
+  openOverlay(t("MSP.More.LogOut", "Log Out"), msg, [
+    { label: t("MSP.Common.Cancel", "Cancel"), onClick: closeOverlay, primary: true },
+    { label: t("MSP.LogOut.Confirm", "Log out"), danger: true, onClick: () => {
+      closeOverlay();
+      safe("log out", () => game.logOut());
+    } }
   ]);
 }
 
@@ -1587,7 +1892,13 @@ function mount() {
     ui_.rail?.replaceWith(fresh);
     ui_.rail = fresh;
   });
-  for (const h of ["updateActor", "createItem", "deleteItem", "updateItem"]) {
+  /* D-WOUNDS-01, 2026-08-25: the three effect hooks are NOT decoration. Being
+     Incapacitated is an ActiveEffect, not a field on the actor, so it never
+     fires `updateActor` — without these the skull would only appear on the next
+     unrelated change, and the rail would keep showing a healthy character who is
+     already down. The same holds for Shaken and every other SWADE status. */
+  for (const h of ["updateActor", "createItem", "deleteItem", "updateItem",
+                   "createActiveEffect", "deleteActiveEffect", "updateActiveEffect"]) {
     Hooks.on(h, refresh);
     ui_.hooks.push([h, refresh]);
   }
