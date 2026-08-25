@@ -480,11 +480,39 @@ body.msp-on .msp-rescued {
 /*  D-TOGGLE-01 — the view-toggle pair                 */
 /* -------------------------------------------------- */
 
-/* Desktop side: the "switch to mobile" button on Foundry's sidebar tab rail.
+/* Desktop side: the "switch to mobile" button on Foundry's control column.
    The SVG brings its own rounded tile, so the host button shows no chrome of
-   its own — otherwise it would be a square inside a square. Lives OUTSIDE
-   body.msp-on on purpose: it is the one element present while the module is
-   off, and in mobile mode the whole tab rail is hidden anyway. */
+   its own — otherwise it would be a square inside a square.
+
+   These are the only rules in this file OUTSIDE body.msp-on, and that is on
+   purpose: this button is the one element present while the module is off, so
+   `body.msp-on` cannot reach it. They are addressed by id and nothing else, so
+   they cannot touch a pixel of anyone else's interface. A third unscoped rule
+   would need its own decision record.
+
+   ---- D-TOGGLE-02, 2026-08-25 -------------------------------------------
+   Mario: "o tamanho do ícone do toggle está fora do padrão dos outros ícones
+   da esquerda". Measured on his screenshot: the neighbours draw at 40px square,
+   this one at 26 — 65% of them.
+
+   The cause was `width: 22px; height: 22px`, written right here in D-TOGGLE-01
+   and never revisited. Not a subtle inheritance problem: a fixed pixel number
+   inside a column that scales with the theme and with the player's --ui-scale.
+
+   That is the FOURTH time this project has shipped the same defect, and this
+   one is worse than the others, because check 41 of the harness exists to catch
+   exactly it — and did not. Check 41 reads the stylesheet for fixed pixels in
+   `font-size` only. A size can be written in `width` and `height` too. The test
+   was right about the disease and too narrow about where to look; check 43 now
+   covers the geometry of this button.
+
+   The cure is the same one the project keeps relearning: do not name a size,
+   name the box. `--control-size` is Foundry's own variable for the edge of a
+   control in the current theme, already multiplied by --ui-scale. Measured
+   against it the image comes out 24 at 24, 32 at 32, 40 at 40, 48 at 48.
+
+   (`100%` was tried first and is wrong here: the button is content-sized, so a
+   percentage child is under-determined and only looked right by accident.) */
 #msp-to-mobile {
   background: none;
   border: none;
@@ -492,9 +520,12 @@ body.msp-on .msp-rescued {
   padding: 0;
 }
 #msp-to-mobile img {
-  width: 22px;
-  height: 22px;
   display: block;
+  width: var(--control-size, 32px);
+  height: var(--control-size, 32px);
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 /* Mobile side: the "back to desktop" button, leftmost on our bottom bar. */
