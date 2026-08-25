@@ -9,8 +9,7 @@
   "MSP.Tab.Chat": "Chat",
   "MSP.Tab.Map": "Mapa",
   "MSP.Status.Wounds": "Ferimentos",
-  "MSP.Status.Fatigue": "Fadiga",
-  "MSP.Status.Bennies": "Bennies",
+  "MSP.Status.Incapacitated": "Incapacitado",
   "MSP.Target.Label": "Alvo",
   "MSP.Target.Title": "Alvo",
   "MSP.Target.Empty": "Nenhum token nesta cena.",
@@ -23,7 +22,6 @@
   "MSP.Prompt.Detected": "Este aparelho parece ser um celular ou tablet.",
   "MSP.Prompt.Question": "Ativar o <strong>modo celular</strong> neste navegador? Ele só vale aqui — não muda nada para os outros jogadores, e você pode desligar a qualquer momento pelo botão <em>Mais</em>.",
   "MSP.More.StopWriting": "Fechar o campo de mensagem",
-  "MSP.More.SaveLog": "Salvar log de diagnóstico",
   "MSP.Hotbar.Empty": "Nenhuma macro na hotbar.",
   "MSP.Prompt.Yes": "Ativar",
   "MSP.Prompt.Later": "Agora não",
@@ -35,5 +33,12 @@
   "MSP.Settings.Capture.Name": "Capturar mensagens do console",
   "MSP.Settings.Capture.Hint": "Registra avisos e erros para que Mais -> Salvar log de diagnóstico tenha o que escrever. Desligado por padrão: enquanto está ligado, as ferramentas do navegador atribuem a este módulo todos os avisos do jogo, o que atrapalha depurar os outros. Ligue só antes de reproduzir um problema.",
   "MSP.Toggle.ToMobile": "Mudar para a visão de celular",
-  "MSP.Toggle.ToDesktop": "Voltar à visão de desktop"
+  "MSP.Toggle.ToDesktop": "Voltar à visão de desktop",
+  "MSP.Benny.Spend": "Gastar um benny",
+  "MSP.Benny.None": "Sem bennies",
+  "MSP.More.Journal": "Diários",
+  "MSP.More.LogOut": "Sair",
+  "MSP.LogOut.Ask": "Sair do jogo e voltar para a tela de login?",
+  "MSP.LogOut.Confirm": "Sair",
+  "MSP.Common.Cancel": "Cancelar"
 }
