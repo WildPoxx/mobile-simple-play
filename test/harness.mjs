@@ -121,6 +121,15 @@ const actor = {
   items,
   system: { wounds: { value: 0, max: 3 }, fatigue: { value: 0, max: 2 }, bennies: { value: 1 } },
   rollSkill: async id => calls.push(`rollSkill:${id}`),
+  /* D-BENNY-01: the module only offers the benny button to an actor that can
+     actually spend one, so the fixture has to be able to. Mirrors SWADE's own
+     contract (SwadeActor.ts:565): returns false when there is nothing left. */
+  spendBenny: async function () {
+    if ((this.system.bennies.value ?? 0) < 1) return false;
+    this.system.bennies.value -= 1;
+    calls.push("spendBenny");
+    return true;
+  },
   sheet: { render: () => calls.push("sheet.render") }
 };
 
@@ -139,6 +148,7 @@ let dialogAnswer = "yes";
 
 globalThis.game = {
   version: "14.365",
+  logOut: () => calls.push("game.logOut"),
   system: { id: "swade", version: "6.0.4" },
   modules: [{ active: true }, { active: true }],
   macros: { get: id => macros.get(id) ?? null },
@@ -292,8 +302,20 @@ ok(6, "non-favourite weapon stays out — `system.favorite` is respected");
 assert.ok(rail.querySelector(".msp-rail-top > .msp-slot").classList.contains("msp-item"));
 ok(7, "order: weapons on top, as in Mario's mockup");
 
-assert.strictEqual(rail.querySelectorAll(".msp-badge").length, 3);
-ok(8, "three status badges: wounds, fatigue, bennies");
+/* D-WOUNDS-01 rewrote this one. It used to assert THREE badges — wounds,
+   fatigue, bennies. Fatigue left by Mario's call, and wounds stopped being a
+   fraction and became his drawing plus a chip. Two badges now, and the check
+   names what each one is instead of only counting them. */
+assert.ok(!rail.querySelector(".msp-fatigue"), "fatigue must be gone");
+assert.ok(!rail.querySelector(".msp-bennies"),
+  "the old numeric bennies badge must be gone — the benny button carries its own count (D-BENNY-02)");
+const woundBadge = rail.querySelector(".msp-wounds");
+assert.ok(woundBadge?.querySelector(".msp-wounds-art"));
+assert.ok(woundBadge?.querySelector(".msp-wounds-chip"));
+const bennyBadge = rail.querySelector(".msp-benny");
+assert.ok(bennyBadge?.querySelector(".msp-benny-art"));
+assert.ok(bennyBadge?.querySelector(".msp-benny-chip"));
+ok(8, "the foot carries two pictures with chips — wounds and bennies — and no fractions");
 
 itemSlots[0].dispatchEvent(new dom.window.Event("click"));
 skillSlots[0].dispatchEvent(new dom.window.Event("click"));
@@ -367,18 +389,36 @@ Hooks.callAll("renderSidebar");
 assert.ok(calls.filter(c => c === "sidebar.changeTab:chat/primary").length >= 2, "re-pinned on re-render");
 ok(14, "the sidebar is pinned EXPANDED and on chat, and re-pinned if anything changes it");
 
-// 15. Foundry's "window too small" notice: the visible one is removed, and
-//     future ones are swallowed while mobile mode is on.
-const notes = [...document.querySelectorAll("#notifications .notification")];
-assert.strictEqual(notes.length, 1, "the resolution notice was removed");
-assert.strictEqual(notes[0].className, "notification info", "the unrelated notice was left alone");
+// 15. D-NOTIFY-01. The contract CHANGED in 0.1.22, and the reason is in the
+//     field log: shadowing `ui.notifications.notify` to swallow a message made
+//     us return a fake id, Foundry stored it, and `remove()` threw on every
+//     resize — constantly, on a phone. So we no longer stand between Foundry
+//     and its own bookkeeping.
+//
+//     The new contract, and what this checks:
+//       a) every notify() reaches Foundry untouched, and its return value is
+//          whatever Foundry made — never ours;
+//       b) nothing is deleted from the notification list;
+//       c) error and warning notices are hidden by the STYLESHEET, not by JS;
+//       d) each hidden one is copied into the diagnostic log, so `Save
+//          diagnostic log` still carries it.
 calls.length = 0;
-const swallowed = ui.notifications.notify("ERROR.RESOLUTION.Window", "error", { permanent: true });
-assert.strictEqual(swallowed, -1, "a new resolution notice is swallowed");
-assert.strictEqual(calls.length, 0, "and never reaches Foundry");
+const returned = ui.notifications.notify("ERROR.RESOLUTION.Window", "error", { permanent: true });
+assert.strictEqual(calls.length, 1, "every notification reaches Foundry now — we intercept nothing");
+assert.notStrictEqual(returned, -1,
+  "notify() must return Foundry's own value: a fake id is what broke Notifications#remove");
 ui.notifications.notify("Something else", "info");
-assert.strictEqual(calls.length, 1, "unrelated notices still get through");
-ok(15, "Foundry's window-size complaint is suppressed, and only that one");
+assert.strictEqual(calls.length, 2, "and so does an unrelated one");
+
+{
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+  const rule = css.match(/body\.msp-on #notifications > \.notification\.error,\s*body\.msp-on #notifications > \.notification\.warning\s*\{([^}]*)\}/);
+  assert.ok(rule, "the red boxes must be hidden by CSS scoped to body.msp-on");
+  assert.ok(/display:\s*none\s*!important/.test(rule[1]), "and actually hidden");
+  assert.ok(!/\.notification\.info|\.notification\.success/.test(rule[0]),
+    "info and success must stay: they are how the module answers the player");
+}
+ok(15, "red notices are hidden by the stylesheet, and Foundry's own bookkeeping is left alone");
 
 // 16. The message field is a TOGGLE, and it closes itself.
 globalThis.MobileSimplePlay.setTab("chat");
@@ -1040,13 +1080,23 @@ ok(41, "the stylesheet scales by ratio, and its exceptions out-rank the blanket"
   assert.ok(/overflow-x:\s*auto\s*!important/.test(strip[1]),
     "#combatants must scroll horizontally with !important, to beat --carousel-overflow: hidden");
 
-  // (c) The dock starts at the rail and ends at the screen edge — the two
-  //     numbers Mario asked for by hand. Written as the rail VARIABLE, never
-  //     as a pixel count, so it follows the phone scale.
+  // (c) The dock starts at its own origin and ends at the screen edge — the two
+  //     numbers Mario asked for by hand. Written as a VARIABLE, never as a pixel
+  //     count, so it follows the phone scale.
+  //
+  //     D-CANVAS-06, 2026-08-25: that origin used to be `--msp-rail`, on the
+  //     theory that the strip should touch the rail. Mario measured 78 on the
+  //     screen and asked for the gap, so it became `--msp-dock-x`. The check
+  //     changed with it — and deliberately still refuses `--msp-rail` here, so
+  //     that anyone who "simplifies" the two back into one has to argue with a
+  //     failing test instead of silently undoing his measurement.
   const dock = css.match(/body\.msp-on\[data-msp-tab="map"\]\s+#combat-dock\s*\{([^}]*)\}/);
   assert.ok(dock, "the dock's placement rule is still present");
-  assert.ok(/left:\s*var\(--msp-rail\)\s*!important/.test(dock[1]),
-    "the dock must start at var(--msp-rail) — flush with the rail, never under it, never a fixed px");
+  assert.ok(/left:\s*var\(--msp-dock-x\)\s*!important/.test(dock[1]),
+    "the dock must start at var(--msp-dock-x) — its own origin, never a fixed px and never the rail's width");
+  const dockX = css.match(/--msp-dock-x:\s*calc\((\d+)px\s*\*\s*var\(--msp-scale/);
+  assert.ok(dockX, "--msp-dock-x must be a multiple of --msp-scale");
+  assert.strictEqual(Number(dockX[1]), 78, "Mario measured the dock origin at 78");
   assert.ok(/right:\s*0\s*!important/.test(dock[1]),
     "the dock must run to the right edge of the screen");
 
@@ -1082,7 +1132,20 @@ ok(42, "the carousel spans the screen from the rail, and scrolls instead of clip
     const sel = m[2].trim();
     if (!sel || sel.startsWith("*") || sel.startsWith("/")) continue;
     if (/^(from|to|\d+%)$/.test(sel)) continue;                  // keyframes
-    if (sel.split(",").every((s) => /body\.msp-on/.test(s))) continue;
+    // Dividir por virgula so no NIVEL DE CIMA: `:is(a, b)` traz virgulas suas,
+    // e um split ingenuo transforma uma regra escopada em varias que parecem
+    // soltas. Foi o que aconteceu com a pele da ficha, em 2026-08-25 — o teste
+    // acusou uma regra que estava correta.
+    const partes = [];
+    let nivel = 0, atual = "";
+    for (const ch of sel) {
+      if (ch === "(") nivel++;
+      else if (ch === ")") nivel--;
+      if (ch === "," && nivel === 0) { partes.push(atual); atual = ""; continue; }
+      atual += ch;
+    }
+    partes.push(atual);
+    if (partes.every((s) => /body\.msp-on/.test(s))) continue;
     unscoped.push(sel);
   }
   assert.deepStrictEqual(unscoped, ["#msp-to-mobile", "#msp-to-mobile img"],
@@ -1104,4 +1167,342 @@ ok(42, "the carousel spans the screen from the rail, and scrolls instead of clip
 }
 ok(43, "the view toggle is sized by Foundry's control box, and nothing else escapes the scope");
 
-console.log("\n=== 43/43 green ===");
+
+// 44. D-WINDOW-01 and D-QUEST-01, together, because they fail together.
+//
+//     A Foundry window remembers its last position as an INLINE style. Opened
+//     once on a desktop, it remembers a left of several hundred pixels and, on
+//     a phone, opens entirely off screen — which is what Mario reported as "the
+//     portrait does nothing the first time". His log carries no error for that
+//     click, and that absence is the evidence: the click worked, the window
+//     went somewhere he could not see.
+//
+//     The MasterQuest panel arrives through the same door, so the containment
+//     has to exist before the button does — a new button that appears to do
+//     nothing is worse than no button.
+{
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+
+  // (a) Windows are pinned to the content area, and with !important — the
+  //     remembered position is inline, and only !important outranks it.
+  const win = css.match(/body\.msp-on \.application:not\([^{]*\{([^}]*)\}/);
+  assert.ok(win, "mobile mode must pin Foundry windows to the screen");
+  for (const prop of ["position", "left", "right", "top", "bottom"]) {
+    assert.ok(new RegExp(`${prop}:[^;]*!important`).test(win[1]),
+      `the window rule must force ${prop} — an inline position beats anything weaker`);
+  }
+  assert.ok(/#combat-dock/.test(win[0]),
+    "the carousel must be excluded: it has its own placement (D-CANVAS-04)");
+
+  // (b) The quest button is built from a lookup, never from an assumption that
+  //     MasterQuest is installed. Same shape as the rail's swade-tools door.
+  const js = readFileSync(new URL("../scripts/mobile-simple-play.mjs", import.meta.url), "utf8");
+  const finder = js.match(/function questLogOpener\(\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(finder, "the quest log opener must be looked up, not assumed");
+  assert.ok(/typeof open === "function"/.test(finder[0]),
+    "the opener must be type-checked before it is offered as a button");
+  assert.ok(/const quests = questLogOpener\(\);\s*\n\s*if \(quests\)/.test(js),
+    "the button must only be built when the module answered — in a world without MasterQuest there is no button");
+}
+ok(44, "Foundry windows are pinned to the phone screen, and the quest button only exists when MasterQuest does");
+
+/* -------------------------------------------------------------------------
+   45. D-WOUNDS-01 — the wound picture tells the truth, in both directions
+
+   This check exists because the defect it guards against is INVISIBLE: an
+   inverted reading renders perfectly and simply lies. Three drops red would
+   mean "nearly dead" instead of "unhurt", the rail would look right, and the
+   only person to find out would be the player, at the table, deciding whether
+   to press an attack.
+
+   So the state machine is exercised end to end, not sampled.
+   ------------------------------------------------------------------------- */
+{
+  const js = readFileSync(new URL("../scripts/mobile-simple-play.mjs", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+
+  // (a) The five drawings must be in the package. A missing file is a broken
+  //     image in the rail, and nothing else would report it.
+  for (const art of ["Wounds-00", "Wounds-01", "Wounds-02", "Wounds-03", "Wounds-Death"]) {
+    const path = new URL(`../icons/wounds/${art}.svg`, import.meta.url);
+    assert.ok(readFileSync(path, "utf8").includes("<svg"), `${art}.svg must ship with the module`);
+  }
+
+  // (b) The whole ramp, wound by wound, on the live rail. Earlier checks leave
+  //     the module unmounted, so it is put back up first — the rail only exists
+  //     while mobile mode is on.
+  if (!document.body.classList.contains("msp-on")) globalThis.MobileSimplePlay.mount();
+  assert.ok(document.getElementById("msp-rail"), "the rail must be up before the ramp is measured");
+  //     The chip counts drops still RED — capacity left — and the art walks
+  //     Wounds-00 through Wounds-03.
+  const seen = [];
+  for (let taken = 0; taken <= 3; taken++) {
+    actor.system.wounds.value = taken;
+    Hooks.callAll("updateActor", actor);
+    const r = document.getElementById("msp-rail");
+    const chip = r.querySelector(".msp-wounds-chip");
+    const art = r.querySelector(".msp-wounds-art");
+    seen.push(`${taken}->${chip.textContent}`);
+    assert.strictEqual(chip.textContent, String(3 - taken),
+      `with ${taken} wounds the chip must read ${3 - taken} — drops LEFT, not wounds taken`);
+    assert.ok(art.getAttribute("src").endsWith(`Wounds-0${taken}.svg`),
+      `with ${taken} wounds the art must be Wounds-0${taken}`);
+    assert.ok(r.querySelector(".msp-wounds").getAttribute("aria-label").includes(`${taken}/3`),
+      "the label a screen reader hears must carry the real numbers");
+  }
+  assert.deepStrictEqual(seen, ["0->3", "1->2", "2->1", "3->0"]);
+
+  // (c) Incapacitated is a STATUS, not a fourth wound. A Wild Card who fails the
+  //     Vigor roll is out at three wounds, so counting alone would miss him.
+  actor.system.wounds.value = 1;
+  actor.statuses = new Set(["incapacitated"]);
+  Hooks.callAll("createActiveEffect", actor);
+  const down = document.getElementById("msp-rail");
+  assert.strictEqual(down.querySelector(".msp-wounds-chip").textContent, "X");
+  assert.ok(down.querySelector(".msp-wounds-art").getAttribute("src").endsWith("Wounds-Death.svg"),
+    "the skull must come from the status, even with only one wound on the sheet");
+  actor.statuses = new Set();
+  actor.system.wounds.value = 0;
+  Hooks.callAll("deleteActiveEffect", actor);
+
+  // (d) The status hooks. Being Incapacitated is an ActiveEffect and never fires
+  //     updateActor: without these the rail would show a healthy character who
+  //     is already down. This is the check that would have caught it.
+  for (const h of ["createActiveEffect", "deleteActiveEffect", "updateActiveEffect"]) {
+    assert.ok(js.includes(`"${h}"`), `the rail must rebuild on ${h}, or the skull arrives late`);
+  }
+
+  // (e) Fatigue is gone from every layer, by Mario's call — not just hidden.
+  //     Comments are stripped first: check 43 already burned a round on a name
+  //     quoted inside a comment, and the same trap is set here, because the
+  //     record of WHY fatigue left has to mention fatigue by name.
+  const jsBare = js.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const cssBare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!/msp-fatigue/.test(jsBare), "the fatigue badge must be gone from the script");
+  assert.ok(!/msp-fatigue/.test(cssBare), "the fatigue badge must be gone from the stylesheet");
+
+  // (f) The chip colours are his, and they are MEASURED against the black card
+  //     the drawing carries. This is the rule that D-SHEET-03 learned the hard
+  //     way: a token can be declared correct and still render below the line.
+  const lum = (hex) => {
+    const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map(c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const inks = [...css.matchAll(/\.msp-wounds-chip\[data-left="([^"]+)"\]\s*\{\s*--msp-wound-ink:\s*(#[0-9A-Fa-f]{6})/g)];
+  assert.strictEqual(inks.length, 5, "all five chip states must have a colour");
+  for (const [, state, hex] of inks) {
+    const ratio = (lum(hex) + 0.05) / 0.05;   // sobre o preto do card
+    assert.ok(ratio >= 4.5, `chip "${state}" (${hex}) measures ${ratio.toFixed(2)}:1 on the card — below 4.5:1`);
+  }
+}
+ok(45, "the wound picture counts drops LEFT, the skull comes from the status, and every chip clears 4.5:1");
+
+/* -------------------------------------------------------------------------
+   46. D-BENNY-01 and D-JOURNAL-01 — the two doors added without a drawing
+
+   Both are function, not layout, which is why they could be built while Mario's
+   rail layout is still coming. What this check defends is that neither of them
+   guesses: the benny button only exists for an actor that can spend one, the
+   journal entry only exists if a door answered, and the 3D die that escaped the
+   muzzle is shut by CSS instead of by writing someone's saved preference.
+   ------------------------------------------------------------------------- */
+{
+  const js = readFileSync(new URL("../scripts/mobile-simple-play.mjs", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+
+  if (!document.body.classList.contains("msp-on")) globalThis.MobileSimplePlay.mount();
+  const r = document.getElementById("msp-rail");
+
+  // (a) Order in the foot: TARGET, BENNY, WOUNDS — top to bottom, as drawn in
+  //     Mario's screen mockup. Order in the DOM is order on screen.
+  //
+  //     This assertion was the OPPOSITE a few hours ago, and the flip is the
+  //     point: his sentence ("o Benny... em cima do alvo") and his drawing
+  //     disagreed, and the drawing is later and unambiguous. Left explicit so
+  //     nobody restores the old order from the old sentence.
+  const foot = r.querySelector(".msp-rail-foot");
+  const kids = [...foot.children];
+  const at = (cls) => kids.findIndex(k => k.classList.contains(cls) || k.querySelector?.(`.${cls}`));
+  const iTarget = at("msp-target"), iBenny = at("msp-benny"), iWounds = at("msp-wounds");
+  assert.ok(iBenny >= 0, "the benny button must be in the rail foot");
+  assert.ok(iTarget < iBenny, "the target sits ABOVE the benny — Mario's mockup");
+  assert.ok(iBenny < iWounds, "the benny sits above the wounds — Mario's mockup");
+
+  // (b) It spends, and it spends through SWADE's own method.
+  const before = actor.system.bennies.value;
+  foot.querySelector(".msp-benny").dispatchEvent(new dom.window.Event("click"));
+  await new Promise(res => setTimeout(res, 10));
+  assert.ok(calls.includes("spendBenny"), "the button must call the system's spendBenny()");
+  assert.strictEqual(actor.system.bennies.value, before - 1);
+
+  // (c) At zero it looks spent instead of looking live and doing nothing — the
+  //     worst outcome on a phone, where there is no hover to hint at it.
+  actor.system.bennies.value = 0;
+  Hooks.callAll("updateActor", actor);
+  const empty = document.getElementById("msp-rail").querySelector(".msp-benny");
+  assert.ok(empty.classList.contains("msp-benny-empty"));
+  assert.strictEqual(empty.getAttribute("aria-disabled"), "true");
+  assert.ok(/Sem bennies|No bennies/.test(empty.getAttribute("aria-label")),
+    "the label must say why it is off, because the icon cannot");
+  actor.system.bennies.value = 1;
+  Hooks.callAll("updateActor", actor);
+
+  // (d) The number is printed ONCE, and D-BENNY-02 moved WHERE. It used to be a
+  //     separate numeric badge and the button carried no figure; Mario's mockup
+  //     put the count on the button's own chip, so the badge went. Either way
+  //     the invariant is the same: the rail states the benny count exactly once.
+  const railNow = document.getElementById("msp-rail");
+  const comNumero = [...railNow.querySelectorAll(".msp-benny, .msp-bennies")]
+    .filter(n => /\d/.test(n.textContent ?? ""));
+  assert.strictEqual(comNumero.length, 1,
+    "the benny count must appear exactly once in the rail");
+  assert.ok(comNumero[0].classList.contains("msp-benny"),
+    "and it must be the chip on the button itself (D-BENNY-02)");
+
+  // (d2) The picture saturates at three; the numeral does not. His rule, and the
+  //      only place where the two halves of the badge deliberately disagree.
+  for (const [n, art] of [[0, "BennieBlank"], [1, "Bennie01"], [2, "Bennie02"], [3, "Bennies-003"], [5, "Bennies-003"]]) {
+    actor.system.bennies.value = n;
+    Hooks.callAll("updateActor", actor);
+    const b = document.getElementById("msp-rail").querySelector(".msp-benny");
+    assert.ok(b.querySelector(".msp-benny-art").getAttribute("src").endsWith(`${art}.svg`),
+      `with ${n} bennies the art must be ${art}`);
+    assert.strictEqual(b.querySelector(".msp-benny-chip").textContent, String(n),
+      `with ${n} bennies the chip must read ${n} — exact even when the art has stopped counting`);
+    const path = new URL(`../icons/bennies/${art}.svg`, import.meta.url);
+    assert.ok(readFileSync(path, "utf8").includes("<svg"), `${art}.svg must ship with the module`);
+  }
+  actor.system.bennies.value = 1;
+  Hooks.callAll("updateActor", actor);
+
+  // (d3) The target is Mario's drawing now, not a font glyph, and the foot's
+  //      geometry is the one measured on his mockup: 50 for the art, 20 for the
+  //      chip, ending at 78 — which is exactly where he put the carousel.
+  const alvo = document.getElementById("msp-rail").querySelector(".msp-target img");
+  assert.ok(alvo?.getAttribute("src").endsWith("target-001.svg"),
+    "the target must use his SVG, not a font icon");
+  const cssFoot = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const art = cssFoot.match(/--msp-foot-art:\s*calc\((\d+)px/);
+  const chip = cssFoot.match(/--msp-foot-chip:\s*calc\((\d+)px/);
+  const gap = cssFoot.match(/--msp-foot-gap:\s*calc\((\d+)px/);
+  assert.ok(art && chip && gap, "the foot geometry must be in variables, not scattered pixels");
+  const fim = 5 + Number(art[1]) + Number(gap[1]) + Number(chip[1]);
+  assert.strictEqual(fim, 78,
+    `the foot ends at ${fim}, but the carousel starts at 78 — the chip would collide with the first portrait`);
+
+  // (e) The journal opener asks; it does not assume. No door, no menu entry.
+  const finder = js.match(/function journalOpener\(\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(finder, "the journal must be looked up, not assumed");
+  assert.ok(/typeof d\.renderPopout === "function"/.test(finder[0]),
+    "the door must be type-checked before it is offered");
+  assert.ok(/const journal = journalOpener\(\);\s*\n\s*if \(journal\)/.test(js),
+    "the menu entry must only exist when a door answered");
+
+  // (e2) And the entry really appears when a door exists. The shape check above
+  //      reads source; this one opens the menu, because a defensive lookup that
+  //      is never exercised is a lookup nobody has seen work.
+  globalThis.ui.journal = { renderPopout: () => calls.push("journal.renderPopout") };
+  document.querySelector("#msp-bar .msp-more")?.dispatchEvent(new dom.window.Event("click"));
+  const entrada = [...document.querySelectorAll("#msp-overlay .msp-more-list button")]
+    .find(b => /Journal|Di\u00e1rio/.test(b.textContent));
+  assert.ok(entrada, "with a door open, the Journal entry must be in the More menu");
+  entrada.dispatchEvent(new dom.window.Event("click"));
+  assert.ok(calls.includes("journal.renderPopout"), "and tapping it must open the journal");
+  delete globalThis.ui.journal;
+
+  // (f) The benny's 3D die. SWADE calls showForRoll directly and DSN's own valve
+  //     does not cover that path, so the muzzle here is CSS — and it must NOT be
+  //     a write to the player's saved flag.
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(/body\.msp-on\s+#dice-box-canvas\s*\{[^}]*display:\s*none\s*!important/.test(bare),
+    "the DSN canvas must be hidden while mobile mode is on");
+  assert.ok(!/setFlag\([^)]*dsnShowBennyAnimation/.test(js),
+    "the player's dsnShowBennyAnimation flag is theirs — the module must never write it");
+}
+ok(46, "the benny spends from above the target, the journal only appears if a door answered, and the 3D die is shut by CSS");
+
+/* -------------------------------------------------------------------------
+   47. D-LOGOUT-01 — the exit asks first
+
+   The one entry in this module that cannot be undone by tapping again. On a
+   phone there is no menu bar to climb back through: a stray thumb ends the
+   session mid-fight and the player has to find the URL again. So the thing
+   under test is not that log out works — it is that a single tap CANNOT log
+   anyone out.
+   ------------------------------------------------------------------------- */
+{
+  const js = readFileSync(new URL("../scripts/mobile-simple-play.mjs", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+
+  if (!document.body.classList.contains("msp-on")) globalThis.MobileSimplePlay.mount();
+
+  const abrirMais = () =>
+    document.querySelector("#msp-bar .msp-more")?.dispatchEvent(new dom.window.Event("click"));
+  const itens = () => [...document.querySelectorAll("#msp-overlay .msp-more-list button")];
+
+  // (a) The diagnostic log left the menu — Mario's call, now that the Chrome
+  //     emulator does that job. The console door stays: `MobileSimplePlay
+  //     .saveLog()` is still exported, because it costs nothing and it is how
+  //     a real fault gets captured.
+  abrirMais();
+  assert.ok(!itens().some(b => /Save diagnostic|log de diagn/i.test(b.textContent)),
+    "the diagnostic log entry must be gone from the More menu");
+  assert.strictEqual(typeof globalThis.MobileSimplePlay.saveLog, "function",
+    "but saveLog must remain reachable from the console");
+
+  // (b) Log Out is there, and marked as destructive.
+  const sair = itens().find(b => /Log Out|Sair/.test(b.textContent));
+  assert.ok(sair, "Log Out must be in the More menu");
+  assert.ok(sair.classList.contains("msp-danger"), "and it must be marked as destructive");
+
+  // (c) THE POINT: one tap does not log out. It asks.
+  const antes = calls.filter(c => c === "game.logOut").length;
+  sair.dispatchEvent(new dom.window.Event("click"));
+  assert.strictEqual(calls.filter(c => c === "game.logOut").length, antes,
+    "tapping Log Out must NOT log out — it must ask first");
+  const pergunta = document.querySelector("#msp-overlay .msp-confirm");
+  assert.ok(pergunta && pergunta.textContent.trim().length > 0, "a confirmation must be on screen");
+
+  // (d) Cancel is the PRIMARY button and the affirmative is the plain one —
+  //     reversed on purpose, because the two mistakes do not cost the same.
+  const botoes = [...document.querySelectorAll("#msp-overlay .msp-overlay-foot button")];
+  assert.strictEqual(botoes.length, 2, "the confirmation must offer exactly two ways out");
+  assert.ok(botoes[0].classList.contains("msp-primary"),
+    "Cancel must be the primary button — confirming by accident costs the session");
+  assert.ok(!botoes[1].classList.contains("msp-primary"));
+  assert.ok(botoes[1].classList.contains("msp-danger"));
+
+  // (e) Cancelling really cancels, and leaves nothing behind.
+  botoes[0].dispatchEvent(new dom.window.Event("click"));
+  assert.strictEqual(calls.filter(c => c === "game.logOut").length, antes, "cancel must not log out");
+  assert.ok(!document.getElementById("msp-overlay"), "and the overlay must close");
+
+  // (f) Confirming does log out, through Foundry's own exit.
+  abrirMais();
+  itens().find(b => /Log Out|Sair/.test(b.textContent)).dispatchEvent(new dom.window.Event("click"));
+  [...document.querySelectorAll("#msp-overlay .msp-overlay-foot button")][1]
+    .dispatchEvent(new dom.window.Event("click"));
+  assert.strictEqual(calls.filter(c => c === "game.logOut").length, antes + 1,
+    "confirming must call game.logOut()");
+
+  // (g) And it logs out ONLY. No settings cleared, no flags written, no storage
+  //     wiped on the way past — Foundry stays the authority over its own state.
+  const saida = js.match(/function confirmLogOut\(\)[\s\S]*?\n\}/)[0];
+  assert.ok(!/setFlag|setSetting|localStorage|sessionStorage|clear\(\)/.test(saida),
+    "logging out must not also reset anything of the player's");
+
+  // (h) The red is measured, not picked by eye — same rule the wound chips
+  //     answer to. Darkest surface this button sits on is the list, #1c1b19.
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const vermelho = bare.match(/\.msp-danger[^{]*\{[^}]*color:\s*(#[0-9A-Fa-f]{6})/);
+  assert.ok(vermelho, "the destructive colour must be declared");
+  const lin = (hex) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const L = (hex) => { const [r, g, b] = lin(hex); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const ratio = (L(vermelho[1]) + 0.05) / (L("#1c1b19") + 0.05);
+  assert.ok(ratio >= 4.5, `the destructive red measures ${ratio.toFixed(2)}:1 — below 4.5:1`);
+}
+ok(47, "Log Out replaced the diagnostic log, asks before it acts, and cancel is the easy answer");
+
+console.log("\n=== 47/47 green ===");
