@@ -1058,4 +1058,50 @@ ok(41, "the stylesheet scales by ratio, and its exceptions out-rank the blanket"
 }
 ok(42, "the carousel spans the screen from the rail, and scrolls instead of clipping");
 
-console.log("\n=== 42/42 green ===");
+
+// 43. D-TOGGLE-02. The switch that turns the module ON is the one element that
+//     exists while the module is OFF, so it is the one thing `body.msp-on`
+//     cannot reach — and for that reason its rules are the only unscoped ones
+//     in the file. That makes them the only rules that can leak into a stranger's
+//     desktop, and the only ones check 41 never looked at.
+//
+//     It also hid the same defect for the fourth time: `width: 22px` on the
+//     image, a fixed pixel inside a column that scales with the theme. Check 41
+//     reads fixed pixels in `font-size` only. This one reads the geometry.
+{
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+
+  // (a) The unscoped surface must stay exactly what it is: rules addressed by
+  //     this one id. Anything else outside body.msp-on reaches other people's
+  //     interfaces, which is the whole thing "born inert" promises not to do.
+  // Comments first: this file QUOTES other people's CSS to explain it, and a
+  //  quoted `#ui-middle { ... }` is not a rule this module ships.
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const unscoped = [];
+  for (const m of bare.matchAll(/(^|\n)\s*([^@\n{}][^{}\n]*)\{/g)) {
+    const sel = m[2].trim();
+    if (!sel || sel.startsWith("*") || sel.startsWith("/")) continue;
+    if (/^(from|to|\d+%)$/.test(sel)) continue;                  // keyframes
+    if (sel.split(",").every((s) => /body\.msp-on/.test(s))) continue;
+    unscoped.push(sel);
+  }
+  assert.deepStrictEqual(unscoped, ["#msp-to-mobile", "#msp-to-mobile img"],
+    `only the view toggle may live outside body.msp-on (found: ${unscoped.join(" | ")})`);
+
+  // (b) Its image must be sized from Foundry's own control box, never from a
+  //     number of ours. This is the rule that was broken from 0.1.11 to 0.1.20.
+  const img = css.match(/#msp-to-mobile img\s*\{([^}]*)\}/);
+  assert.ok(img, "the toggle's image rule is still present");
+  for (const prop of ["width", "height"]) {
+    const v = img[1].match(new RegExp(`(?:^|;|\\n)\\s*${prop}:\\s*([^;]+)`));
+    assert.ok(v, `the toggle's image must declare ${prop}`);
+    const value = v[1].trim();
+    assert.ok(!/^-?[\d.]+px$/.test(value),
+      `the toggle's image ${prop} is a fixed ${value} — it must follow --control-size, or it stops matching the column the moment the theme or --ui-scale moves`);
+    assert.ok(/var\(--control-size/.test(value),
+      `the toggle's image ${prop} must be measured from var(--control-size), not from ${value}`);
+  }
+}
+ok(43, "the view toggle is sized by Foundry's control box, and nothing else escapes the scope");
+
+console.log("\n=== 43/43 green ===");
