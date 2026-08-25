@@ -1011,4 +1011,51 @@ ok(40, "the map is framed by the physical screen, not by the reported width");
 }
 ok(41, "the stylesheet scales by ratio, and its exceptions out-rank the blanket");
 
-console.log("\n=== 41/41 green ===");
+
+// 42. D-CANVAS-04. The carousel was cut in half for a reason no stylesheet
+//     could confess: it lived inside #ui-middle, which Foundry sizes at 60%
+//     of the screen AND scales — and a transformed ancestor becomes the
+//     containing block for `position: fixed`, so the dock's `left/right` were
+//     measuring the middle 60%, not the screen. Meanwhile the strip itself
+//     could not scroll, because the dock module spends `--carousel-overflow`
+//     (hidden) on #combatants, one level below where we had put the scroll.
+//     Both were measured in a rebuilt copy of Mario's world; both are the
+//     kind of fault that comes back the moment someone tidies the file.
+{
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+
+  // (a) The trap must stay disarmed: on the map tab #ui-middle gives up its
+  //     60% and its transform, or the dock silently shrinks back.
+  const middle = css.match(/body\.msp-on\[data-msp-tab="map"\]\s+#ui-middle\s*\{([^}]*)\}/);
+  assert.ok(middle, "the map tab must free #ui-middle, or the dock is fixed to the middle 60%");
+  assert.ok(/width:\s*100%\s*!important/.test(middle[1]),
+    "#ui-middle must take the whole width on the map tab");
+  assert.ok(/transform:\s*none\s*!important/.test(middle[1]),
+    "#ui-middle must drop its transform, or `position: fixed` never reaches the screen");
+
+  // (b) The scroll must sit on the element that actually clips. `overflow` on
+  //     the dock window is not enough and never was.
+  const strip = css.match(/body\.msp-on\[data-msp-tab="map"\][^{]*#combatants\s*\{([^}]*)\}/);
+  assert.ok(strip, "#combatants must be addressed directly, or the strip clips instead of scrolling");
+  assert.ok(/overflow-x:\s*auto\s*!important/.test(strip[1]),
+    "#combatants must scroll horizontally with !important, to beat --carousel-overflow: hidden");
+
+  // (c) The dock starts at the rail and ends at the screen edge — the two
+  //     numbers Mario asked for by hand. Written as the rail VARIABLE, never
+  //     as a pixel count, so it follows the phone scale.
+  const dock = css.match(/body\.msp-on\[data-msp-tab="map"\]\s+#combat-dock\s*\{([^}]*)\}/);
+  assert.ok(dock, "the dock's placement rule is still present");
+  assert.ok(/left:\s*var\(--msp-rail\)\s*!important/.test(dock[1]),
+    "the dock must start at var(--msp-rail) — flush with the rail, never under it, never a fixed px");
+  assert.ok(/right:\s*0\s*!important/.test(dock[1]),
+    "the dock must run to the right edge of the screen");
+
+  // (d) The portrait size stays a ratio of the phone scale.
+  const size = css.match(/--combatant-portrait-size:\s*calc\((\d+)px\s*\*\s*var\(--msp-scale/);
+  assert.ok(size, "the portrait size must be a multiple of --msp-scale, not a fixed px");
+  assert.ok(Number(size[1]) >= 40 && Number(size[1]) <= 56,
+    `portrait base ${size[1]}px is outside the readable band 40-56`);
+}
+ok(42, "the carousel spans the screen from the rail, and scrolls instead of clipping");
+
+console.log("\n=== 42/42 green ===");
