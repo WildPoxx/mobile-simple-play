@@ -1391,6 +1391,16 @@ ok(45, "the wound picture counts drops LEFT, the skull comes from the status, an
   assert.strictEqual(fim, 78,
     `the foot ends at ${fim}, but the carousel starts at 78 — the chip would collide with the first portrait`);
 
+  // D-RAIL-03, 2026-08-25: and the rail must be WIDE ENOUGH TO SHOW IT. This
+  // assertion exists because the first version failed exactly here: the mockup
+  // drew the chips spilling over the map, the geometry was built to match, and
+  // `#msp-rail { overflow: hidden }` clipped them on the real phone. Measuring
+  // the drawing was not enough — nobody asked whether the box let it out.
+  const trilho = cssFoot.match(/--msp-rail:\s*calc\((\d+)px/);
+  assert.ok(trilho, "--msp-rail must be a multiple of --msp-scale");
+  assert.ok(Number(trilho[1]) >= fim,
+    `the rail is ${trilho[1]} but its foot needs ${fim} — the chips would be cut off, and the rail hides overflow`);
+
   // (e) The journal opener asks; it does not assume. No door, no menu entry.
   const finder = js.match(/function journalOpener\(\)\s*\{[\s\S]*?\n\}/);
   assert.ok(finder, "the journal must be looked up, not assumed");
@@ -1505,4 +1515,60 @@ ok(46, "the benny spends from above the target, the journal only appears if a do
 }
 ok(47, "Log Out replaced the diagnostic log, asks before it acts, and cancel is the easy answer");
 
-console.log("\n=== 47/47 green ===");
+/* -------------------------------------------------------------------------
+   48. D-SHEET-04 — the collapse reaches INSIDE the tabs
+
+   The failure this guards against already happened. D-SHEET-01 collapsed the
+   sheet's outer grid, I measured that on the bench, and I called it done. But
+   the Traits tab has a SECOND grid of its own — `.summary`, ten columns — and
+   the blanket never touched it. On the phone, four blocks of `span 2` shared
+   one row inside 333px and the labels wrote over each other.
+
+   A nested grid does not show up when you test the outer one. So this check
+   reads the rules by name: every grid the sheet declares must be answered.
+   ------------------------------------------------------------------------- */
+{
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // The container query is where every sheet rule must live: outside it they
+  // would follow the player to the desktop.
+  const cq = bare.match(/@container\s+msp-sheet[^{]*\{([\s\S]*?)\n\}/);
+  assert.ok(cq, "the sheet rules must live inside the container query");
+  const dentro = cq[1];
+
+  // (a) Both grids answered — the outer one and the tab's own.
+  for (const grade of [".main-grid", ".summary"]) {
+    const re = new RegExp(`\\${grade}[^{}]*\\{[^}]*grid-template-columns:\\s*1fr\\s*!important`);
+    assert.ok(re.test(dentro), `${grade} must collapse to a single column`);
+    const kids = new RegExp(`\\${grade}\\s*>\\s*\\*[^{}]*\\{[^}]*grid-column:\\s*1\\s*/\\s*-1\\s*!important`);
+    assert.ok(kids.test(dentro), `${grade}'s children must each take the full width`);
+  }
+
+  // (b) The two rows that used to be flex and would SQUEEZE instead of wrapping.
+  //     Silent squeezing is the failure mode here: flex shrinks children until
+  //     the text overlaps and never reports anything.
+  assert.ok(/\.attributes-list\s*\{[^}]*flex-wrap:\s*wrap\s*!important/.test(dentro),
+    "the attribute row must wrap, not squeeze");
+
+  // (c) The derived stats stop being a single row of four.
+  assert.ok(/\.derived\s+\.derived-list\s*\{[^}]*grid-template-columns:\s*repeat\(2/.test(dentro),
+    "the derived stats must fall into two columns");
+
+  // (d) Nothing may overflow horizontally: a sideways scroll inside the sheet
+  //     steals the drag the whole module relies on.
+  assert.ok(/max-width:\s*100%/.test(dentro), "the sheet's blocks must be capped at the window width");
+
+  // (e) And none of it may escape to the desktop. Every sheet selector inside
+  //     the query has to carry the mobile scope.
+  const seletores = dentro.split("}").map(b => b.split("{")[0].trim()).filter(Boolean);
+  for (const sel of seletores) {
+    for (const parte of sel.split(",").map(x => x.trim()).filter(Boolean)) {
+      assert.ok(parte.startsWith("body.msp-on"),
+        `"${parte}" is not scoped to mobile mode — it would follow the player to the desktop`);
+    }
+  }
+}
+ok(48, "the single column reaches inside the Traits tab, where a second grid was hiding");
+
+console.log("\n=== 48/48 green ===");
