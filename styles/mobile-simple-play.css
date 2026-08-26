@@ -15,7 +15,24 @@ body.msp-on {
      viewport far wider than the hardware — Chrome's "Desktop site" being the
      usual cause. Every measurement below is a multiple of it, so the interface
      keeps its PHYSICAL size whatever the browser claims the width is. */
-  --msp-rail: calc(68px * var(--msp-scale, 1));
+  /* D-RAIL-03, 2026-08-25. De 68 para 78, com o aparelho na mao.
+     Mario: "a barra da esquerda precisa ser um pouco aumentada, o tamanho que
+     ela tem esta cortando a numeracao".
+
+     A causa esta duas dezenas de linhas abaixo: `#msp-rail` tem
+     `overflow: hidden`. O mockup dele desenhou os chips TRANSBORDANDO o trilho
+     por cima do mapa, e eu implementei a geometria acreditando nisso — mas um
+     contentor que esconde o que passa da borda nunca ia deixar transbordar.
+     Medir a largura do desenho no mockup nao bastava; faltou perguntar se o
+     trilho deixava sair. Nao deixava, e a prova veio da tela do celular.
+
+     78 nao e escolha: e onde o pe termina (5 + 50 + 3 + 20). O mesmo 78 do
+     `--msp-dock-x`, e agora as duas grandezas coincidem POR CAUSA uma da outra —
+     o trilho acaba exatamente onde o carrossel comeca. Continuam variaveis
+     separadas, porque continuam significando coisas diferentes.
+
+     Custo: o conteudo perde 10 px de largura, de 343 para 333. */
+  --msp-rail: calc(78px * var(--msp-scale, 1));
   /* D-CANVAS-06, 2026-08-25. A origem horizontal do carrossel. Comecou colada
      no trilho (68) e Mario mediu 78 na tela: dez pixels de folga entre o botao
      de alvo e o primeiro retrato. Vive separada de `--msp-rail` de proposito —
@@ -1274,6 +1291,115 @@ body.msp-on .swade-official .window-content {
     max-height: 100%;
     object-fit: contain;
   }
+
+  /* ---- D-SHEET-04: a manta nao alcancava a aba Traits -------------------- */
+
+  /* Mario, com o celular na mao: "a versao da nossa ficha, principalmente no que
+     diz respeito a parte de atributos derivados, aquele miolo que fica entre o
+     cabecalho e a parte de equipamentos, esta totalmente confuso".
+
+     Estava, e a causa e um erro meu de escopo. A manta acima endereca
+     `.main-grid > *` — os filhos da grade PRINCIPAL. Mas o miolo da aba Traits
+     nao mora nela: mora numa SEGUNDA grade, a `.summary`, que o SWADE declara
+     assim (src/scss/_character-sheet.scss, linha 546):
+
+         .summary { grid-template-columns: repeat(10, 1fr); }
+
+     e onde fadiga, ferimentos, estado e bennies ocupam `span 2` cada um, os
+     quatro na MESMA linha. Numa janela de 333 px isso da 66 px por bloco: os
+     rotulos se sobrepoem e viram aquilo. A ficha nunca esteve em coluna unica —
+     so a casca externa estava.
+
+     A licao e sobre metodo, nao sobre CSS: eu verifiquei o colapso na bancada e
+     dei por bom porque o QUE EU OLHEI colapsou. Nao olhei dentro das abas. Uma
+     grade aninhada nao aparece quando se testa a de fora.
+
+     Aqui a `.summary` vira coluna unica, e as tres grades internas que o SWADE
+     usa para atributos e derivados param de espremer. */
+  body.msp-on .swade-official .summary {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: none !important;
+    grid-auto-rows: max-content !important;
+  }
+  body.msp-on .swade-official .summary > * {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+  }
+
+  /* Fadiga, ferimentos, estado e bennies: quatro blocos que eram uma linha de
+     quatro colunas. Viram uma faixa que QUEBRA em vez de espremer — dois por
+     linha quando cabem, um quando nao. `flex-wrap` e o que faltava: sem ele o
+     flex encolhe os filhos ate o texto se sobrepor, silenciosamente. */
+  body.msp-on .swade-official .summary .attributes-list {
+    flex-wrap: wrap !important;
+  }
+
+  /* Fadiga e ferimentos eram colunas estreitas: rotulo em cima, valor embaixo,
+     `-` e `+` nas pontas. Numa faixa de 333 px essa mesma regra joga o menos na
+     borda esquerda e o mais na direita, com trinta centimetros de nada no meio —
+     legivel, mas ridiculo, e um alvo de toque longe do polegar.
+
+     Viram uma LINHA compacta: rotulo, e o par de botoes com o valor entre eles,
+     tudo alinhado a esquerda. A ordem visual muda; a ordem do HTML nao, entao o
+     leitor de tela continua ouvindo a mesma sequencia. */
+  body.msp-on .swade-official .summary .fatigue-wrapper,
+  body.msp-on .swade-official .summary .wounds-wrapper {
+    flex-direction: row !important;
+    align-items: center;
+    gap: calc(10px * var(--msp-scale, 1));
+  }
+  body.msp-on .swade-official .summary .counter-header {
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    gap: calc(10px * var(--msp-scale, 1));
+    flex: 0 0 auto;
+  }
+  body.msp-on .swade-official .summary .counter-header .label { order: -1; }
+
+  /* Os derivados (Tamanho, Passo, Aparar, Resistencia) eram uma fileira de
+     rotulos com o valor embaixo. Em coluna unica viram uma grade de dois, que
+     cabe em 333 px sem cortar nome nenhum. */
+  body.msp-on .swade-official .derived .derived-list {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: calc(6px * var(--msp-scale, 1)) calc(10px * var(--msp-scale, 1)) !important;
+    align-items: end;
+  }
+  body.msp-on .swade-official .derived .stat {
+    margin-bottom: 0 !important;
+    min-width: 0;
+  }
+  body.msp-on .swade-official .derived .stat-label {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+
+  /* Os atributos sao cinco: em duas colunas sobra um orfao, em uma coluna a
+     ficha fica comprida demais. Um por linha, com o nome a esquerda e o dado a
+     direita, e a leitura que o celular pede. */
+  body.msp-on .swade-official .summary .attributes .attribute {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(8px * var(--msp-scale, 1));
+    width: 100%;
+    padding-right: calc(4px * var(--msp-scale, 1));
+  }
+  body.msp-on .swade-official .summary .attribute-value { flex: 0 0 auto; }
+
+  /* Perícias e Acesso Rápido dividiam a linha 3, cinco colunas cada. Empilham. */
+  body.msp-on .swade-official .summary .skills,
+  body.msp-on .swade-official .summary .quickaccess {
+    min-width: 0;
+  }
+
+  /* Nada aqui pode transbordar a janela: numa ficha de sistema qualquer campo
+     pode ser mais largo que a caixa, e um transbordo horizontal na ficha rouba
+     o gesto de rolagem que o modulo inteiro depende. */
+  body.msp-on .swade-official .summary,
+  body.msp-on .swade-official .summary > *,
+  body.msp-on .swade-official .derived,
+  body.msp-on .swade-official .attributes { min-width: 0; max-width: 100%; }
 }
 
 
