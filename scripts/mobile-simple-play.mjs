@@ -29,7 +29,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.22";
+const VERSION = "0.1.23";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
