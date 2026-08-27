@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Medida da tela — Mobile Simple Play</title>
+<meta name="description" content="Mostra a largura, a altura e a densidade da tela deste celular.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+  /* Um painel de instrumento, para ser lido no escuro antes da sessao. Tema
+     unico e deliberado: toda cor e pintada, nada e herdado do navegador. */
+  :root {
+    --couro-fundo: #17120D;
+    --couro:       #241C14;
+    --couro-alto:  #2F2419;
+    --tinta:       #F2EAD6;
+    --tinta-fraca: #A2917A;
+    --bronze:      #C8A24A;
+    --linha:       rgba(200, 162, 74, .22);
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--couro-fundo); }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--couro-fundo);
+    color: var(--tinta);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .folha {
+    max-width: 34rem;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 5vw, 2.5rem) clamp(1rem, 4vw, 2rem) 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1.25rem, 4vw, 1.75rem);
+  }
+  header { display: flex; flex-direction: column; gap: .4rem; }
+  .selo {
+    font-family: "Cinzel", Georgia, serif;
+    font-weight: 600;
+    font-size: clamp(1.25rem, 5.5vw, 1.6rem);
+    letter-spacing: .04em;
+    color: var(--bronze);
+    margin: 0;
+    text-wrap: balance;
+  }
+  .recado {
+    margin: 0;
+    font-size: clamp(.95rem, 3.6vw, 1.05rem);
+    line-height: 1.5;
+    color: var(--tinta-fraca);
+    max-width: 40ch;
+  }
+  /* A leitura: rotulo pequeno, valor enorme. E o que vai ser fotografado, entao
+     o numero tem de sobreviver a um print ruim. */
+  .leituras { display: flex; flex-direction: column; gap: .75rem; }
+  .leitura {
+    background: var(--couro);
+    border: 1px solid var(--linha);
+    border-radius: 14px;
+    padding: clamp(.9rem, 3.5vw, 1.15rem) clamp(1rem, 4vw, 1.4rem);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .rotulo {
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--tinta-fraca);
+  }
+  .valor {
+    font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(2rem, 11vw, 3rem);
+    line-height: 1;
+    color: var(--bronze);
+  }
+  .aviso {
+    background: var(--couro-alto);
+    border-left: 3px solid var(--bronze);
+    border-radius: 0 10px 10px 0;
+    padding: .85rem 1rem;
+    font-size: .92rem;
+    line-height: 1.5;
+    color: var(--tinta-fraca);
+    margin: 0;
+  }
+  .aviso strong { color: var(--tinta); font-weight: 500; }
+  button {
+    font: inherit;
+    font-weight: 500;
+    font-size: 1.05rem;
+    color: var(--couro-fundo);
+    background: var(--bronze);
+    border: 0;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    min-height: 56px;
+    cursor: pointer;
+    width: 100%;
+  }
+  button:active { filter: brightness(1.12); }
+  button:focus-visible { outline: 3px solid var(--tinta); outline-offset: 3px; }
+  .miudo {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .72rem;
+    line-height: 1.6;
+    color: var(--tinta-fraca);
+    word-break: break-all;
+    border-top: 1px solid var(--linha);
+    padding-top: 1rem;
+    margin: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="folha">
+  <header>
+    <h1 class="selo">Medida da tela</h1>
+    <p class="recado">Esta página só olha o seu celular e mostra os números aqui.
+      Tire um print desta tela e mande para o Mario — é o que ele precisa para
+      deixar a interface do jogo do tamanho certo no seu aparelho.</p>
+  </header>
+
+  <div class="leituras">
+    <div class="leitura"><span class="rotulo">Largura</span><span class="valor" id="largura">—</span></div>
+    <div class="leitura"><span class="rotulo">Altura</span><span class="valor" id="altura">—</span></div>
+    <div class="leitura"><span class="rotulo">Densidade</span><span class="valor" id="dpr">—</span></div>
+  </div>
+
+  <p class="aviso">Não role a página nem gire o celular antes do print.
+    <strong>A altura muda</strong> quando a barra de endereço do navegador some,
+    e é justamente a medida com a barra visível que serve.</p>
+
+  <button id="copiar" type="button">Copiar as três medidas</button>
+
+  <p class="miudo" id="assinatura">…</p>
+
+  <p class="aviso">Nada é enviado a lugar nenhum. A página não guarda nem
+    transmite nada — os números aparecem só na sua tela.</p>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+
+  function ler() {
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var d = window.devicePixelRatio || 1;
+    /* Tres casas: densidade quase nunca e redonda, e arredondar produz um numero
+       que existe em tabela mas nao neste aparelho. */
+    var dpr = Math.round(d * 1000) / 1000;
+    $("largura").textContent = w;
+    $("altura").textContent = h;
+    $("dpr").textContent = String(dpr);
+    $("assinatura").textContent =
+      "tela do aparelho " + (screen.width || "?") + "x" + (screen.height || "?") +
+      " · " + navigator.userAgent;
+    return w + " x " + h + " · dpr " + dpr;
+  }
+
+  var resumo = ler();
+  window.addEventListener("resize", function () { resumo = ler(); });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", function () { resumo = ler(); });
+  }
+
+  $("copiar").addEventListener("click", function () {
+    var texto = "Medida da tela: " + resumo + "\n" + $("assinatura").textContent;
+    var ok = function () { $("copiar").textContent = "Copiado — cole no WhatsApp"; };
+    var nao = function () { $("copiar").textContent = "Não deu para copiar. Tire um print."; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texto).then(ok, nao);
+    } else { nao(); }
+  });
+})();
+</script>
+</body>
+</html>
