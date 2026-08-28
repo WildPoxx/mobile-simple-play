@@ -29,7 +29,7 @@
  */
 
 const MOD = "mobile-simple-play";
-const VERSION = "0.1.23";
+const VERSION = "0.1.24";
 const BODY_CLASS = "msp-on";
 
 /** Skills placed on the rail when the player has configured nothing.
@@ -54,7 +54,10 @@ const RESOLUTION_KEYS = ["ERROR.RESOLUTION.Screen", "ERROR.RESOLUTION.Scale", "E
 const ui_ = {
   rail: null, bar: null, overlay: null, writeClose: null,
   hooks: [], capture: null, notify: null, logWatch: null, postOne: null,
-  stick: null, dsn: null, gestures: null, rootFont: null
+  stick: null, dsn: null, gestures: null, rootFont: null,
+  /* D-LAYER-01: the windows MSP itself opened, and the short window of time in
+     which the next render is claimed as ours. */
+  owned: new Set(), claimUntil: 0
 };
 
 /* -------------------------------------------------- */
@@ -1164,8 +1167,79 @@ function describeDock() {
   }) ?? "describe dock failed";
 }
 
+/* -------------------------------------------------- */
+/*  D-LAYER-01 — the windows MSP opened are MSP's      */
+/* -------------------------------------------------- */
+
+/* Mario, 2026-08-28: "uma vez modificado qualquer um dos menus de baixo, o
+ * MasterQuest fechasse".
+ *
+ * The bar is the navigation. Until now Foundry's windows floated above it and
+ * knew nothing about it, so the quest panel stayed on screen over the chat,
+ * over the map, over everything. Leaving a tab has to mean leaving what the tab
+ * opened.
+ *
+ * Only OUR windows close, and that is the whole difficulty. A window the GM
+ * pushed with `show`, or one a player reached from a link in the chat, did not
+ * come from the bar — closing it would take off the screen exactly what someone
+ * else just put there. So ownership is CLAIMED, not guessed: the button arms a
+ * short window of time, and the first Foundry window rendered inside it is
+ * ours. The claim expires by itself; an armed claim that never fires is
+ * harmless, and an opener that fails marks nothing.
+ */
+const CLAIM_MS = 2000;
+
+function claimNextWindow() {
+  ui_.claimUntil = Date.now() + CLAIM_MS;
+}
+
+function claimWindow(app, element) {
+  if (!document.body.classList.contains(BODY_CLASS)) return;
+  if (Date.now() > ui_.claimUntil) return;
+  safe("claim the window", () => {
+    const win = element instanceof HTMLElement
+      ? (element.closest(".application") ?? element)
+      : (element?.[0]?.closest?.(".application") ?? app?.element ?? null);
+    if (!win?.classList?.contains("application")) return;
+    /* Same exclusion list as D-WINDOW-01 and D-WINDOW-02, for the same reason:
+       our own chrome is not a Foundry window. */
+    if (["msp-overlay", "msp-bar", "msp-rail", "combat-dock"].includes(win.id)) return;
+    ui_.claimUntil = 0;              // one render per claim, never two
+    win.dataset.mspOwned = "1";
+    if (app) ui_.owned.add(app);
+  });
+}
+
+function forgetWindow(app) {
+  safe("forget the window", () => ui_.owned.delete(app));
+}
+
+function closeOwnedWindows() {
+  safe("close what the bar opened", () => {
+    const apps = [...ui_.owned];
+    ui_.owned.clear();
+    ui_.claimUntil = 0;
+    for (const app of apps) {
+      safe("close one window", () => {
+        const win = app?.element instanceof HTMLElement ? app.element : null;
+        if (win?.dataset) delete win.dataset.mspOwned;
+        if (typeof app.close === "function") app.close();
+      });
+    }
+    /* Marked but not tracked — a V1 window, or a render caught without an
+       application object. Foundry's own control is the fallback, exactly as in
+       the close button of D-WINDOW-02: never rip the element out of the DOM. */
+    for (const win of document.querySelectorAll(".application[data-msp-owned]")) {
+      delete win.dataset.mspOwned;
+      win.querySelector('[data-action="close"], .header-button.close, a.close')?.click();
+    }
+  });
+}
+
 function setTab(tab) {
   safe("switch tab", () => {
+    /* D-LAYER-01: leaving a tab means leaving what the tab opened. */
+    closeOwnedWindows();
     document.body.dataset.mspTab = tab;
     for (const b of ui_.bar?.querySelectorAll("[data-msp-tab]") ?? []) {
       b.classList.toggle("is-active", b.dataset.mspTab === tab);
@@ -1283,7 +1357,7 @@ function buildBar() {
       type: "button",
       id: "msp-quests",
       "aria-label": t("MSP.Quests.Label", "Quests"),
-      onclick: () => safe("open the quest log", quests)
+      onclick: () => safe("open the quest log", () => { claimNextWindow(); quests(); })
     }, el("i", { class: "fa-solid fa-scroll" })));
   }
 
@@ -1292,7 +1366,7 @@ function buildBar() {
     type: "button",
     id: "msp-pc",
     "aria-label": actor?.name ?? t("MSP.Bar.Character", "Character"),
-    onclick: () => safe("open sheet", () => myActor()?.sheet?.render(true))
+    onclick: () => safe("open sheet", () => { claimNextWindow(); myActor()?.sheet?.render(true); })
   });
   if (actor?.img) pc.append(el("img", { src: actor.img, alt: "" }));
   else pc.append(el("i", { class: "fa-solid fa-user" }));
@@ -1337,7 +1411,7 @@ function openMore() {
   if (journal) {
     box.append(el("button", {
       type: "button", text: t("MSP.More.Journal", "Journals"),
-      onclick: () => { closeOverlay(); journal(); }
+      onclick: () => { closeOverlay(); claimNextWindow(); journal(); }
     }));
   }
 
@@ -1913,6 +1987,83 @@ function mount() {
     Hooks.on(h, pin);
     ui_.hooks.push([h, pin]);
   }
+
+  /* D-WINDOW-02: the way out of a window, put where a thumb can reach it. */
+  for (const h of ["renderApplicationV2", "renderApplication"]) {
+    Hooks.on(h, addCloseFab);
+    ui_.hooks.push([h, addCloseFab]);
+  }
+
+  /* D-LAYER-01: the window the bar just opened is marked as ours, so that
+     changing tab can close it — and only it. */
+  for (const h of ["renderApplicationV2", "renderApplication"]) {
+    Hooks.on(h, claimWindow);
+    ui_.hooks.push([h, claimWindow]);
+  }
+  for (const h of ["closeApplicationV2", "closeApplication"]) {
+    Hooks.on(h, forgetWindow);
+    ui_.hooks.push([h, forgetWindow]);
+  }
+  safe("close buttons on windows already open", () => {
+    for (const win of document.querySelectorAll(".application")) placeCloseFab(win, null);
+  });
+}
+
+/* -------------------------------------------------- */
+/*  D-WINDOW-02 — closing a window with a thumb        */
+/* -------------------------------------------------- */
+
+/* Mario, 2026-08-26, relaying the player: "ele tem dificuldade de fechar" — both
+   the character sheet and the MasterQuest panel. Two separate causes, and only
+   one of them is about size.
+ *
+ * The first is that the D-WINDOW-01 pins every window to the whole screen, so
+ * the `x` sits in the TOP-RIGHT corner of a 736-pixel-tall phone held in one
+ * hand. It is not small: it is out of reach. No amount of enlarging fixes a
+ * button the thumb cannot arrive at.
+ *
+ * So the way out is duplicated, not moved: Foundry's own `x` stays exactly
+ * where it is — we do not touch another module's header — and MSP adds a wide
+ * button along the BOTTOM of the window, just above the bar, where the thumb
+ * already rests. Two doors to the same room is a smell when one is hidden; here
+ * both are visible, and the far one belongs to Foundry.
+ *
+ * Closing goes through the application's own `close()`, never by removing the
+ * element: an application that is ripped out of the DOM leaves Foundry holding
+ * a reference to a window it thinks is open.
+ */
+function placeCloseFab(win, app) {
+  return safe("place the close button", () => {
+    if (!win?.classList?.contains("application")) return;
+    /* Our own chrome is not a Foundry window, and the carousel has no header to
+       close. Same exclusion list as D-WINDOW-01, and for the same reason. */
+    if (["msp-overlay", "msp-bar", "msp-rail", "combat-dock"].includes(win.id)) return;
+    if (win.querySelector(":scope > .msp-close-fab")) return;
+
+    const close = () => safe("close the window", () => {
+      if (app && typeof app.close === "function") return app.close();
+      /* No application object — a V1 window, or a re-render we did not catch.
+         Foundry's own control is the fallback; we click it rather than guess. */
+      win.querySelector('[data-action="close"], .header-button.close, a.close')?.click();
+    });
+
+    const fab = el("button", {
+      type: "button",
+      class: "msp-close-fab",
+      "aria-label": t("MSP.Common.Close", "Close"),
+      text: t("MSP.Common.Close", "Close"),
+      onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); close(); }
+    });
+    win.append(fab);
+  });
+}
+
+function addCloseFab(app, element) {
+  if (!document.body.classList.contains(BODY_CLASS)) return;
+  const win = element instanceof HTMLElement
+    ? (element.closest(".application") ?? element)
+    : (element?.[0]?.closest?.(".application") ?? app?.element ?? null);
+  placeCloseFab(win, app);
 }
 
 function unmount() {
@@ -1925,6 +2076,8 @@ function unmount() {
     closeOverlay();
     for (const [hook, fn] of ui_.hooks) Hooks.off(hook, fn);
     ui_.hooks.length = 0;
+    ui_.owned.clear();
+    ui_.claimUntil = 0;
     unwatchChatLog();
     restoreDeviceScale();
     disableCanvasGestures();

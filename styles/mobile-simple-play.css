@@ -1221,6 +1221,213 @@ body.msp-on .application:not(#combat-dock) > .window-resize-handle {
 }
 
 
+/* ---- D-WINDOW-02: o cabecalho legivel e a saida ao alcance -------------- */
+
+/* Mario, 2026-08-26, com o print: "la em cima a fonte ta preta sobre uma barra
+   marrom escura, isso compromete a visibilidade... o ideal e que a fonte fique
+   branca e a gente consiga aumentar ela em pelo menos dois pontos".
+
+   ---- POR QUE ESTAVA PRETO -------------------------------------------------
+
+   A pele da ficha JA pinta o cabecalho e JA declara a tinta clara:
+
+       .swade-official .window-header { background: var(--mq-chrome-bg);
+                                        color: var(--mq-on-chrome); }
+
+   So que `color` no PAI nao alcanca um filho que tem `color` proprio — e o
+   `.window-title` do Foundry tem. A cor certa estava escrita e nunca chegava ao
+   texto. Vale registrar porque o sintoma ("o CSS nao pegou") sugere escopo ou
+   especificidade, e a causa era herança: um erro de leitura, nao de peso.
+
+   ---- POR QUE VALE PARA TODA JANELA, E NAO SO PARA A FICHA -----------------
+
+   O mesmo acontece no painel do MasterQuest, que tambem pinta o proprio couro.
+   Entao a regra sobe para o escopo das JANELAS, ao lado da D-WINDOW-01. Mas ela
+   corrige so CONTRASTE e TAMANHO: nao encosta no fundo de ninguem. Pintar o
+   cabecalho de todo mundo seria impor a pele do MSP a modulos que ja tem a sua.
+
+   A tinta sai de `--mq-on-chrome` quando existe, e cai em branco quando nao —
+   o que cobre o tema escuro do Foundry e qualquer modulo de couro. */
+body.msp-on {
+  --msp-window-title: calc(16px * var(--msp-scale, 1));   /* era ~14; +2, como ele pediu */
+}
+
+body.msp-on .application:not(#combat-dock) > .window-header,
+body.msp-on .application:not(#combat-dock) > .window-header .window-title,
+body.msp-on .application:not(#combat-dock) > .window-header button,
+body.msp-on .application:not(#combat-dock) > .window-header a,
+body.msp-on .application:not(#combat-dock) > .window-header i {
+  color: var(--mq-on-chrome, #FFFFFF) !important;
+}
+
+body.msp-on .application:not(#combat-dock) > .window-header {
+  font-size: var(--msp-window-title) !important;
+  min-height: calc(48px * var(--msp-scale, 1));
+  align-items: center;
+  gap: calc(6px * var(--msp-scale, 1));
+  padding: 0 calc(8px * var(--msp-scale, 1));
+}
+body.msp-on .application:not(#combat-dock) > .window-header .window-title {
+  font-size: var(--msp-window-title) !important;
+  line-height: 1.25;
+  /* Titulo longo corta com reticencias em vez de empurrar os controles para
+     fora da tela — que e como o `x` some no celular. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* Os controles do cabecalho viram alvo de toque de verdade (48, a medida da
+   ESPEC), sem mudar onde ficam. */
+body.msp-on .application:not(#combat-dock) > .window-header button,
+body.msp-on .application:not(#combat-dock) > .window-header a {
+  min-width: calc(40px * var(--msp-scale, 1));
+  min-height: calc(40px * var(--msp-scale, 1));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  /* Sem isto o `x` some: aumentar a caixa faz o navegador desenhar o fundo
+     padrao de um <button>, branco, e a tinta clara que acabamos de dar ao
+     cabecalho desaparece dentro dele. Visto no render. O Foundry ja desenha
+     esses controles sem fundo; aqui so garantimos que continue assim. */
+  background: transparent;
+  border: 0;
+}
+
+/* ---- D-WINDOW-03: o texto dentro das janelas alheias -------------------- */
+
+/* Mario, 2026-08-26: "esses elementos, como o MasterQuest e os proprios
+   jornais, estao numa configuracao CSS de DESKTOP, nao foram pensados pro MSP,
+   e acabam ficando muito pequenos... a gente tem que trazer um pequeno aumento
+   da fonte, principalmente dos menus".
+
+   ---- O QUE ESTA REALMENTE ACONTECENDO -------------------------------------
+
+   Vale nomear, porque e a lacuna central do modulo e nao um detalhe de fonte.
+
+   Tudo que o MSP DESENHA participa do `--msp-scale`: o trilho, a barra, os
+   cards do chat, os chips. Numa tela maior ou mais densa, esses elementos
+   mantem o tamanho FISICO. Nada que o FOUNDRY desenha participa: a ficha, o
+   painel de missoes e o jornal chegam com medidas de desktop, congeladas.
+
+   O resultado e uma tela de duas velocidades — e e por isso que a pergunta
+   sobre o aparelho exato do Cocada e a pergunta certa: num aparelho diferente,
+   a metade do MSP acompanha e a metade do Foundry nao.
+
+   ---- COMO CORRIGIR SEM QUEBRAR O QUE NAO E NOSSO -------------------------
+
+   Dois caminhos, escolhidos pela informacao que cada janela oferece.
+
+   1. QUANDO O MODULO TEM TOKENS, retunam-se os TOKENS. O MasterQuest publica a
+      escala tipografica inteira em `--mq-text-*`. Redefini-los aqui e usar o
+      ponto de extensao que a DEC-012 criou de proposito: nenhuma regra de
+      componente e tocada, nada e sobrescrito com `!important`, e se o
+      MasterQuest mudar um componente amanha, isto continua valendo.
+
+   2. QUANDO NAO HA TOKENS (jornal, janela generica), so resta um PISO. Um piso
+      nao mexe em quem ja e maior; so impede o que e pequeno demais.
+
+   `zoom` na janela foi considerado e recusado: escala tambem a LARGURA util, e
+   uma janela de 333 px a 1,15 passaria a se comportar como 290 — exatamente a
+   compressao que a D-SHEET-04 acabou de consertar. Aumentar o texto sem
+   estreitar a caixa e o ponto. */
+body.msp-on {
+  --msp-window-text: calc(15px * var(--msp-scale, 1));   /* piso do corpo   */
+  --msp-window-menu: calc(17px * var(--msp-scale, 1));   /* piso dos menus  */
+}
+
+/* (1) O MasterQuest, pela porta que ele mesmo abriu: mais dois pontos em cada
+   degrau, e agora atrelados ao aparelho. As entrelinhas nao mudam — sao
+   proporcoes, e ja estavam certas. */
+body.msp-on .masterquest,
+body.msp-on .mq-tokens {
+  --mq-text-xs: calc(13px * var(--msp-scale, 1));
+  --mq-text-sm: calc(14px * var(--msp-scale, 1));
+  --mq-text-md: calc(16px * var(--msp-scale, 1));
+  --mq-text-lg: calc(18px * var(--msp-scale, 1));
+  --mq-text-xl: calc(22px * var(--msp-scale, 1));
+  --mq-text-2xl: calc(28px * var(--msp-scale, 1));
+}
+
+/* (2) O piso, para quem nao tem tokens. `max()` e o que faz disto um PISO e nao
+   uma imposicao: texto que ja e maior fica como esta.
+
+   Texto maior dentro de caixa fixa quebra a caixa — este e o preco da mudanca,
+   e e pago aqui: nada de rolagem lateral, e palavra longa parte em vez de
+   empurrar. A D-SHEET-04 pagou o mesmo preco pelo mesmo motivo. */
+body.msp-on .application:not(#combat-dock):not(#msp-overlay) > .window-content {
+  font-size: max(1em, var(--msp-window-text));
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* Os menus, as abas e as listas — o que ele destacou, e com razao: sao os alvos
+   de toque, e um item pequeno demais nao e so dificil de ler, e dificil de
+   acertar.
+   O alvo cresce por PADDING, e nao por `min-height` com `display: flex`. A
+   primeira versao desta regra usava flex e empilhou as abas do MasterQuest numa
+   coluna de tres blocos gigantes: `display` muda o modelo de layout do item, e
+   um `<a>` inline dentro de uma fileira deixa de ser inline. Padding cresce o
+   alvo sem tocar no modelo — vale para inline e para bloco, e nao rearranja
+   nada de ninguem. Visto no render antes de sair daqui. */
+body.msp-on .application:not(#combat-dock):not(#msp-overlay) :is(
+  nav, .tabs, .sub-tabs, menu, .menu, .directory-list, .document-list, .entry-list
+) :is(a, button, li, .item, [data-action]) {
+  font-size: max(1em, var(--msp-window-menu));
+  padding-block: max(calc(6px * var(--msp-scale, 1)), 0.35em);
+}
+
+/* Botoes soltos dentro de uma janela: alvo de toque, sem mexer no desenho. */
+body.msp-on .application:not(#combat-dock):not(#msp-overlay) .window-content :is(button, .button) {
+  font-size: max(1em, var(--msp-window-text));
+  min-height: calc(40px * var(--msp-scale, 1));
+}
+
+
+/* ---- A saida, embaixo, onde o polegar esta ------------------------------ */
+
+/* O `x` do Foundry NAO sai do lugar: continua no canto superior direito, que e
+   dele. O que o MSP faz e acrescentar uma segunda porta, larga, na base da
+   janela — porque o problema do jogador nao e o tamanho do `x`, e a DISTANCIA
+   ate ele. Uma janela presa a tela inteira poe esse canto a 700 px do polegar
+   de quem segura o telefone com uma mao. Aumentar um botao fora de alcance nao
+   resolve nada.
+
+   Fica FIXA em relacao a janela, e nao rolando com o conteudo: uma ficha longa
+   levaria a saida junto e ela sumiria exatamente quando fosse mais precisa. */
+body.msp-on .msp-close-fab {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(10px * var(--msp-scale, 1));
+  z-index: 5;
+
+  min-width: calc(180px * var(--msp-scale, 1));
+  min-height: calc(52px * var(--msp-scale, 1));
+  padding: 0 calc(22px * var(--msp-scale, 1));
+
+  font-size: calc(17px * var(--msp-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.02em;
+
+  color: var(--mq-on-chrome, #FFFFFF);
+  background: var(--mq-chrome-bg, #2A2622);
+  border: 1px solid var(--mq-accent-bright, var(--msp-accent, #C8A24A));
+  border-radius: calc(26px * var(--msp-scale, 1));
+  box-shadow: 0 calc(3px * var(--msp-scale, 1)) calc(12px * var(--msp-scale, 1)) rgba(0, 0, 0, .45);
+  cursor: pointer;
+}
+body.msp-on .msp-close-fab:active { filter: brightness(1.25); }
+
+/* A janela precisa ser a referencia do posicionamento — a D-WINDOW-01 ja lhe da
+   `position: fixed`, o que basta — e o conteudo precisa terminar ACIMA do
+   botao, senao a ultima linha da ficha fica escondida atras dele. */
+body.msp-on .application:not(#combat-dock):not(#msp-overlay) > .window-content {
+  padding-bottom: calc(74px * var(--msp-scale, 1));
+}
+
+
 /* -------------------------------------------------- */
 /*  D-SHEET-01 — a ficha em coluna unica               */
 /* -------------------------------------------------- */
@@ -1657,4 +1864,69 @@ body.msp-on .swade-official .window-content {
 @media (prefers-reduced-motion: reduce) {
   body.msp-on .swade-official::before,
   body.msp-on .swade-official::after { background-image: none; }
+}
+
+
+/* -------------------------------------------------- */
+/*  D-LAYER-01 — a folha do journal em coluna unica     */
+/* -------------------------------------------------- */
+
+/* Mario, 2026-08-28, com o print: "o acesso aos journals continua abrindo
+   identico a janela do Foundry e isso gera um problema de visualizacao nas
+   paginas das entradas... simplesmente nao tem como acessar esse handout".
+
+   ---- A MEDIDA, LIDA NO NUCLEO ---------------------------------------------
+
+   Em `foundry2.css` do 14.365:
+
+       .sheet.journal-entry .window-content { flex-direction: row; }
+       .sheet.journal-entry { --sidebar-width-expanded: 300px; }
+       .sheet.journal-entry .journal-sidebar {
+         flex: 0 0 var(--sidebar-width-expanded);
+       }
+
+   O terceiro valor daquele `flex` e `flex-shrink: 0`: a barra lateral do
+   journal NAO abre mao de um pixel, por menor que seja a tela. Descontado o
+   trilho de 78, sobram 354 px de largura util no aparelho do Cocada — 300 vao
+   para o indice e restam **54** para o conteudo. Nao e o handout que sumiu: e a
+   coluna que o contem que ficou com 54 px de largura.
+
+   Na bancada (411 → 333 px) e pior: restam 33.
+
+   ---- A CORRECAO -----------------------------------------------------------
+
+   A caixa vira COLUNA: indice em cima, curto e rolavel; pagina embaixo, em
+   largura inteira. E o mesmo movimento da D-SHEET-01 — desarmar um layout de
+   duas colunas que so faz sentido com mouse e tela larga.
+
+   Nenhuma regra de componente do Foundry e tocada, e o estado `.collapsed` que
+   ele ja traz continua valendo: quem quiser encolher o indice ainda pode.
+
+   Isto e a Rota A da D-LAYER-01, e ela nao resolve o MODELO: navegar por arvore
+   de pastas com busca continua sendo coisa de mouse. Resolve a leitura. */
+body.msp-on :is(.application, .app, .sheet).journal-entry > .window-content {
+  flex-direction: column !important;
+}
+
+body.msp-on :is(.application, .app, .sheet).journal-entry .journal-sidebar {
+  flex: 0 0 auto !important;
+  max-height: 34vh;
+  overflow-y: auto !important;
+}
+
+body.msp-on :is(.application, .app, .sheet).journal-entry .journal-entry-content {
+  flex: 1 1 auto !important;
+  min-height: 0;
+  border-radius: 0 !important;
+}
+
+/* A pagina precisa de margem de telefone, e a imagem do handout precisa caber
+   na largura em vez de sair pela direita. */
+body.msp-on :is(.application, .app, .sheet).journal-entry .journal-entry-pages {
+  margin: 0 8px 8px 8px !important;
+}
+
+body.msp-on :is(.application, .app, .sheet).journal-entry .journal-entry-page :is(img, video) {
+  max-width: 100% !important;
+  height: auto !important;
 }

@@ -1128,7 +1128,14 @@ ok(42, "the carousel spans the screen from the rail, and scrolls instead of clip
   //  quoted `#ui-middle { ... }` is not a rule this module ships.
   const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const unscoped = [];
-  for (const m of bare.matchAll(/(^|\n)\s*([^@\n{}][^{}\n]*)\{/g)) {
+  // Um seletor pode ocupar VARIAS LINHAS quando um `:is(...)` e longo — foi o
+  // que a D-WINDOW-03 introduziu. A varredura anterior parava na quebra de
+  // linha e via a cauda `) :is(...)` como uma regra solta e sem escopo. Junta-se
+  // tudo que vem antes da chave, e so depois se separa. Segunda vez que este
+  // censo acusa uma regra correta por limitacao de leitura, e a segunda vez que
+  // o conserto e no leitor.
+  const semQuebras = bare.replace(/\s*\n\s*/g, " ");
+  for (const m of semQuebras.matchAll(/(^|\}|;)\s*([^@{};]+?)\s*\{/g)) {
     const sel = m[2].trim();
     if (!sel || sel.startsWith("*") || sel.startsWith("/")) continue;
     if (/^(from|to|\d+%)$/.test(sel)) continue;                  // keyframes
@@ -1571,4 +1578,234 @@ ok(47, "Log Out replaced the diagnostic log, asks before it acts, and cancel is 
 }
 ok(48, "the single column reaches inside the Traits tab, where a second grid was hiding");
 
-console.log("\n=== 48/48 green ===");
+/* -------------------------------------------------------------------------
+   49. D-WINDOW-02 — the header can be read, and the way out can be reached
+
+   Two complaints from the player, one of them mis-stated as a size problem.
+   The `x` is not too small: it is in the top-right corner of a window pinned to
+   a 736-pixel screen, which is nowhere near a thumb. Enlarging a button out of
+   reach fixes nothing, so the exit is DUPLICATED at the bottom instead.
+
+   The black-on-brown title was a different animal: the correct colour was
+   already declared on `.window-header`, and never arrived, because
+   `.window-title` carries a colour of its own and `color` does not cross that.
+   ------------------------------------------------------------------------- */
+{
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+  const js = readFileSync(new URL("../scripts/mobile-simple-play.mjs", import.meta.url), "utf8");
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // (a) The ink is put on the TITLE itself, not only on the bar. This is the
+  //     whole bug: a rule on the parent that a child overrides is a rule that
+  //     never ran.
+  const tinta = bare.match(/\.window-header\s+\.window-title[^{}]*\{[^}]*\}/g) || [];
+  assert.ok(/\.window-title[^{}]*,?[\s\S]{0,400}?color:\s*var\(--mq-on-chrome,\s*#FFFFFF\)\s*!important/.test(bare)
+    || tinta.some(b => /color:/.test(b)),
+    "the window TITLE must get the light ink directly — a colour on the header alone never reaches it");
+
+  // (b) Bigger, as he asked, and as a variable rather than a number sprinkled
+  //     around.
+  const tam = bare.match(/--msp-window-title:\s*calc\((\d+)px/);
+  assert.ok(tam, "the title size must be a variable scaled by --msp-scale");
+  assert.ok(Number(tam[1]) >= 16, `the title is ${tam[1]}px — he asked for at least two points more than the 14 it was`);
+
+  // (c) A long title must clip, not shove the controls off screen. That is one
+  //     of the ways the `x` disappears on a phone.
+  assert.ok(/\.window-title[^{}]*\{[^}]*text-overflow:\s*ellipsis/.test(bare),
+    "a long title must ellipsis instead of pushing the close control out of the window");
+
+  // (d) The second door exists, sits at the bottom, and does not scroll away
+  //     with the content.
+  const fab = bare.match(/\.msp-close-fab\s*\{([^}]*)\}/);
+  assert.ok(fab, "the bottom close button must be styled");
+  assert.ok(/position:\s*absolute/.test(fab[1]) && /bottom:/.test(fab[1]),
+    "it must be pinned to the bottom of the window, not flow with the text");
+  const alt = fab[1].match(/min-height:\s*calc\((\d+)px/);
+  assert.ok(alt && Number(alt[1]) >= 48, "it must be a real touch target (>= 48)");
+  assert.ok(/padding-bottom:\s*calc\(\d+px/.test(bare),
+    "the window content must end above the button, or it hides the last line");
+
+  // (e) Foundry's own `x` is NOT moved or hidden. We add a door; we do not
+  //     rearrange another module's header.
+  //     The carousel is the one exception, and it is an old one: D-CANVAS-04
+  //     hides its header because a dock has nothing to close. It is excluded
+  //     everywhere else too, so it is excluded here.
+  const escondeCabecalho = (bare.match(/[^{}]*window-header[^{}]*\{[^}]*display:\s*none[^}]*\}/g) || [])
+    .filter(b => !b.includes("#combat-dock"));
+  assert.strictEqual(escondeCabecalho.length, 0,
+    "the module must not hide the window header of a real window");
+  assert.ok(!/\[data-action="close"\][^{}]*\{[^}]*display:\s*none/.test(bare),
+    "Foundry's own close control must stay where it is");
+
+  // (f) Closing goes through the application, never by deleting the element —
+  //     a window torn out of the DOM leaves Foundry holding an open handle.
+  const fn = js.match(/function placeCloseFab[\s\S]*?\n\}/);
+  assert.ok(fn, "the close button must be placed by a named function");
+  assert.ok(/typeof app\.close === "function"/.test(fn[0]),
+    "it must call the application's own close()");
+  assert.ok(!/\.remove\(\)/.test(fn[0]), "it must never remove the window element itself");
+  assert.ok(/msp-overlay|msp-bar|msp-rail|combat-dock/.test(fn[0]),
+    "our own chrome and the carousel must be excluded, as in D-WINDOW-01");
+  assert.ok(/renderApplicationV2/.test(js) && /renderApplication"/.test(js),
+    "both the V2 and the V1 render hooks must be covered — the core version was not verifiable here");
+}
+ok(49, "the window title is legible and sized, and the way out sits where the thumb is");
+
+/* -------------------------------------------------------------------------
+   50. D-WINDOW-03 — the text inside somebody else's window
+
+   MSP's own chrome scales with the device; nothing Foundry draws does. The
+   sheet, the quest panel and the journal arrive with desktop measurements,
+   frozen. This check guards the two ways that gap is closed, and the two ways
+   it must NOT be closed.
+   ------------------------------------------------------------------------- */
+{
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // (a) Where a token system exists, the TOKENS are retuned — the extension
+  //     point the other module published on purpose. Every step of the scale,
+  //     and every one tied to the device.
+  const mq = bare.match(/\.mq-tokens\s*\{([^}]*)\}/);
+  assert.ok(mq, "MasterQuest's typographic scale must be retuned through its own tokens");
+  for (const passo of ["xs", "sm", "md", "lg", "xl", "2xl"]) {
+    const re = new RegExp(`--mq-text-${passo}:\\s*calc\\((\\d+)px\\s*\\*\\s*var\\(--msp-scale`);
+    const m = mq[1].match(re);
+    assert.ok(m, `--mq-text-${passo} must be retuned and scaled by the device`);
+  }
+  assert.ok(!/--mq-text-[a-z0-9]+:[^;]*!important/.test(mq[1]),
+    "retuning a token needs no !important — using one means we are fighting instead of extending");
+
+  // (b) Where there is no token system, a FLOOR — `max()` leaves anything
+  //     already larger alone. A flat font-size would shrink text that was fine.
+  assert.ok(/font-size:\s*max\(1em,\s*var\(--msp-window-text\)\)/.test(bare),
+    "windows without tokens need a floor, not an imposed size");
+  assert.ok(/font-size:\s*max\(1em,\s*var\(--msp-window-menu\)\)/.test(bare),
+    "menus need their own, larger floor — they are the touch targets");
+
+  // (c) The touch target grows by PADDING, never by display+min-height. The
+  //     first version of this rule used flex and stacked MasterQuest's tab row
+  //     into three full-width blocks: `display` changes an item's layout model.
+  const menu = bare.match(/:is\(\s*\n?\s*nav, \.tabs[^)]*\)\s*:is\([^)]*\)\s*\{([^}]*)\}/);
+  assert.ok(menu, "the menu rule must be present");
+  assert.ok(/padding-block:/.test(menu[1]), "the target must grow by padding");
+  assert.ok(!/display:/.test(menu[1]),
+    "the menu rule must not set display — it rearranges other modules' layouts");
+
+  // (d) Bigger text in a fixed box overflows. That price is paid here, not by
+  //     the player: no sideways scroll, long words break.
+  const conteudo = bare.match(/> \.window-content\s*\{([^}]*font-size:\s*max\(1em[^}]*)\}/);
+  assert.ok(conteudo, "the window content rule must be present");
+  assert.ok(/overflow-x:\s*hidden/.test(conteudo[1]) && /overflow-wrap:/.test(conteudo[1]),
+    "growing the text must not buy a horizontal scrollbar");
+
+  // (e) And `zoom` stays out: it scales the usable WIDTH too, which is the
+  //     squeeze D-SHEET-04 just removed.
+  assert.ok(!/^\s*zoom:/m.test(bare), "zoom would narrow the window as it enlarges the text");
+}
+ok(50, "foreign windows get bigger text through tokens where they exist and a floor where they do not");
+
+/* -------------------------------------------------------------------------
+   51. D-LAYER-01 — leaving a tab leaves what the tab opened
+
+   The bar is the navigation; Foundry's windows floated above it and ignored it,
+   so the quest panel stayed on screen over the chat and over the map. The fix
+   is not "close every window": a window the GM pushed, or one reached from a
+   link in the chat, did not come from the bar. Ownership is CLAIMED by the
+   button that opens it, and the claim expires on its own.
+   ------------------------------------------------------------------------- */
+{
+  const js = readFileSync(new URL("../scripts/mobile-simple-play.mjs", import.meta.url), "utf8");
+
+  // (a) The whole point: changing tab closes.
+  const troca = js.match(/function setTab\(tab\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(troca, "setTab must be present");
+  assert.ok(/closeOwnedWindows\(\)/.test(troca[1]),
+    "changing tab must close what the bar opened, or the quest panel stays over the chat");
+
+  // (b) All three doors the bar opens must claim what they open. A door that
+  //     forgets to claim is a window that never closes again.
+  for (const [porta, marca] of [
+    ["quest log", /open the quest log[\s\S]{0,140}?claimNextWindow\(\)/],
+    ["character sheet", /open sheet[\s\S]{0,140}?claimNextWindow\(\)/],
+    ["journal", /closeOverlay\(\);\s*claimNextWindow\(\);\s*journal\(\)/]
+  ]) {
+    assert.ok(marca.test(js),
+      `the ${porta} must claim the window it opens, or changing tab will not close it`);
+  }
+
+  // (c) The claim EXPIRES, and adopts exactly one window. A claim left open
+  //     would adopt whatever the GM pushed next — somebody else's window.
+  const ms = js.match(/const CLAIM_MS = (\d+);/);
+  assert.ok(ms, "the claim must have a stated lifetime");
+  assert.ok(Number(ms[1]) > 0 && Number(ms[1]) <= 5000,
+    `a claim of ${ms[1]}ms is not a claim, it is an adoption policy`);
+  assert.ok(/ui_\.claimUntil = 0;\s*\/\/ one render per claim/.test(js),
+    "one claim must adopt exactly one window");
+
+  // (d) Closing goes through the application, never by deleting the element —
+  //     the same rule as D-WINDOW-02, for the same reason.
+  const fechar = js.match(/function closeOwnedWindows\(\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(fechar, "closeOwnedWindows must be present");
+  assert.ok(/app\.close\(\)/.test(fechar[1]), "it must close through the application");
+  assert.ok(!/\.remove\(\)/.test(fechar[1]),
+    "ripping the element out leaves Foundry holding a window it thinks is open");
+
+  // (e) A window closed by hand must be forgotten, or we would try to close a
+  //     dead reference on the next tab change.
+  assert.ok(/for \(const h of \["closeApplicationV2", "closeApplication"\]\)[\s\S]{0,160}forgetWindow/.test(js),
+    "a window closed by hand must leave the set");
+
+  // (f) And turning mobile mode off must let go of everything.
+  const desmonta = js.match(/function unmount\(\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(desmonta && /ui_\.owned\.clear\(\)/.test(desmonta[1]),
+    "unmount must let go of the windows it was tracking");
+}
+ok(51, "changing tab closes what the bar opened, and only that");
+
+/* -------------------------------------------------------------------------
+   52. D-LAYER-01 — the journal sheet reads as one column
+
+   `flex: 0 0 300px` on the journal sidebar is flex-shrink: 0. On a 354px-wide
+   phone the index keeps its 300 and leaves 54 for the page — which is why the
+   handout could not be reached. It was never hidden; it was 54 pixels wide.
+   ------------------------------------------------------------------------- */
+{
+  const css = readFileSync(new URL("../styles/mobile-simple-play.css", import.meta.url), "utf8");
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // (a) Two columns side by side become one column stacked.
+  assert.ok(/journal-entry > \.window-content\s*\{[^}]*flex-direction:\s*column\s*!important/.test(bare),
+    "the journal sheet must stop being two columns side by side on a phone");
+
+  // (b) The sidebar must stop refusing to shrink.
+  const lado = bare.match(/journal-entry \.journal-sidebar\s*\{([^}]*)\}/);
+  assert.ok(lado, "the journal sidebar must be addressed");
+  assert.ok(/flex:\s*0\s+0\s+auto\s*!important/.test(lado[1]),
+    "the sidebar must size itself to its content, not hold a fixed 300px");
+  assert.ok(/max-height:/.test(lado[1]) && /overflow-y:\s*auto/.test(lado[1]),
+    "the index must be short and scrollable, or stacking it just eats the page from above");
+
+  // (c) The page takes the rest — and needs min-height: 0, or a flex child
+  //     refuses to shrink below its content and pushes the box open.
+  const conteudo = bare.match(/journal-entry \.journal-entry-content\s*\{([^}]*)\}/);
+  assert.ok(conteudo, "the journal content must be addressed");
+  assert.ok(/flex:\s*1\s+1\s+auto\s*!important/.test(conteudo[1]),
+    "the page must take the remaining height");
+  assert.ok(/min-height:\s*0/.test(conteudo[1]),
+    "without min-height: 0 the page cannot shrink inside the column");
+
+  // (d) The handout is an image. It must fit the width instead of leaving
+  //     through the right edge — which would buy back the sideways scroll that
+  //     D-WINDOW-03 refused to pay for.
+  assert.ok(/journal-entry-page :is\(img, video\)\s*\{[^}]*max-width:\s*100%\s*!important/.test(bare),
+    "the handout image must fit the phone's width");
+
+  // (e) The index is made short, never hidden: it is the only way to choose a
+  //     page.
+  assert.ok(!/journal-sidebar[^{}]*\{[^}]*display:\s*none/.test(bare),
+    "hiding the index would take away the only way to choose a page");
+}
+ok(52, "the journal sheet reads as one column, and the handout fits the screen");
+
+console.log("\n=== 52/52 green ===");
